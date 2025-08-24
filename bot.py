@@ -1,69 +1,135 @@
+import os
+import asyncio
 import logging
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-
-# فعال کردن لاگ‌ها برای خطایابی
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+from flask import Flask, request, jsonify
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 )
 
-# توکن ربات
+# ---- تنظیم لاگ‌ها
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
+# ---- توکن ربات (اگر خواستی امن‌ترش کنی، از ENV بخون)
 TOKEN = "8310741380:AAHRrADEytsjTVZYtJle71e5twxFxqr556c"
 
-# سوالات متداول
-faq_list = [
-    ("چگونه وقت مشاوره رزرو کنم؟", "برای رزرو وقت مشاوره روی دکمه 'رزرو مشاوره' بزنید."),
-    ("آیا مشاوره رایگان است؟", "بسته به نوع مشاوره هزینه متفاوت است. لطفاً به سایت مراجعه کنید."),
-    ("مدارک لازم برای طلاق چیست؟", "برای اطلاعات کامل به بخش مقالات سایت محضرباشی مراجعه کنید."),
-    ("مراحل گرفتن مهریه چیست؟", "مهریه طبق قانون قابل مطالبه است. برای مشاوره تخصصی به وکلای ما مراجعه کنید."),
-    ("آیا حضانت فرزند قابل انتقال است؟", "بله، اما نیازمند بررسی قضایی است."),
-    ("برای ثبت شرکت چه مدارکی نیاز است؟", "مدارک شناسایی، اساسنامه و آدرس محل شرکت لازم است."),
-    ("آیا امکان پیگیری پرونده در سایت وجود دارد؟", "بله، از طریق بخش 'پیگیری پرونده' در سایت محضرباشی."),
-    ("چگونه وکیل انتخاب کنم؟", "وکلای محضرباشی پروفایل کامل دارند، از آنجا انتخاب کنید."),
-    ("آیا تنظیم قرارداد انجام می‌دهید؟", "بله، وکلای ما قراردادها را تنظیم می‌کنند."),
-    ("چگونه شکایت کیفری ثبت کنم؟", "به بخش کیفری سایت بروید یا از وکلای ما مشاوره بگیرید."),
+# ---- Flask app که Render با gunicorn آن را اجرا می‌کند
+flask_app = Flask(__name__)
+
+# ---- برنامه تلگرام
+application = ApplicationBuilder().token(TOKEN).build()
+
+# ---- سوالات متداول (۲۰ سوال نمونه)
+FAQ = [
+    ("چطور وقت مشاوره رزرو کنم؟",
+     "روی دکمه «📝 رزرو مشاوره تخصصی» بزن یا به لینک رزرو برو:\nhttps://mahzarbashi.ir/رزرو-وقت-مشاوره-وکیل-پایه-یک-دادگستری/"),
+    ("هزینه مشاوره چقدر است؟",
+     "بسته به نوع پرونده و مدت‌زمان متفاوته. تعرفه به‌روز داخل صفحه رزرو نمایش داده می‌شود."),
+    ("مدارک لازم برای طلاق چیست؟",
+     "کارت ملی و شناسنامه، عقدنامه و مدارک مرتبط. برای بررسی دقیق حتماً با وکیل صحبت کنید."),
+    ("نحوه مطالبه مهریه چگونه است؟",
+     "از طریق اجرای ثبت یا دادگاه خانواده قابل پیگیری است. انتخاب مسیر وابسته به جزئیات پرونده است."),
+    ("حضانت فرزند چگونه تعیین می‌شود؟",
+     "اصل بر مصلحت طفل است. سن، شرایط والدین و نظر کارشناسی ملاک است."),
+    ("نفقه شامل چه مواردی است؟",
+     "مسکن، پوشاک، درمان و سایر نیازهای متعارف. امکان مطالبه معوقه هم وجود دارد."),
+    ("شروط ضمن عقد چه اهمیتی دارد؟",
+     "می‌تواند حقوقی مثل حق تحصیل/اشتغال/طلاق را تسهیل کند. قبل یا حین عقد قابل درج است."),
+    ("ممنوع‌الخروجی را چگونه پیگیری کنم؟",
+     "علت را باید مشخص کرد (پرونده قضایی/بدهی و ...). سپس درخواست رفع ممنوع‌الخروجی می‌دهیم."),
+    ("ثبت شرکت چه مدارکی می‌خواهد؟",
+     "اطلاعات شرکا، نام و موضوع، آدرس، اساسنامه و مدارک هویتی. جزئیات با نوع شرکت فرق می‌کند."),
+    ("چک برگشتی را چگونه پیگیری کنم؟",
+     "هم از مسیر حقوقی و هم کیفری بسته به شرایط. مشاوره تخصصی لازم است."),
+    ("قرارداد مشارکت را تنظیم می‌کنید؟",
+     "بله؛ تنظیم تخصصی قرارداد از خدمات اصلی ماست تا ریسک‌ها پوشش داده شود."),
+    ("تخلیه ملک چقدر زمان می‌برد؟",
+     "بسته به نوع قرارداد/رهن/اجاره و مدارک، زمان متفاوته. وکیل مسیر سریع‌تر را پیشنهاد می‌دهد."),
+    ("سرقفلی و حق کسب چه تفاوتی دارند؟",
+     "مفاهیم نزدیک اما با آثار متفاوت در قانون روابط موجر و مستأجر. بررسی موردی لازم است."),
+    ("افترا و نشر اکاذیب چطور پیگیری می‌شود؟",
+     "با طرح شکایت کیفری و ارائه ادله. بهتر است متن و مدارک قبل از شکایت بررسی شود."),
+    ("تجربه کار با محضرباشی چطور است؟",
+     "پرونده‌ها مرحله‌به‌مرحله در کنار شما پیش می‌رود و پیگیری شفاف داریم."),
+    ("آیا امکان پیگیری آنلاین پرونده هست؟",
+     "بله، پس از عقد قرارداد، وضعیت پرونده به‌صورت منظم اطلاع‌رسانی می‌شود."),
+    ("ساعت‌های پاسخگویی چطور است؟",
+     "رزرو آنلاین ۲۴ساعته باز است؛ تماس تلفنی در ساعات اداری."),
+    ("آیا قرارداد الکترونیکی معتبر است؟",
+     "بله؛ با امضای الکترونیکی معتبر. اما در برخی موارد نسخه حضوری پیشنهاد می‌شود."),
+    ("برای انتقال ملک چه نکاتی را رعایت کنم؟",
+     "استعلام ثبتی، بررسی بدهی‌ها، تنظیم مبایعه‌نامه دقیق و پرداخت امن."),
+    ("از کجا شروع کنم؟",
+     "از منوی زیر یکی را انتخاب کن: سوالات رایج، رزرو مشاوره تخصصی یا ورود به سایت."),
 ]
 
-# منوی اصلی
+# ---- هندلرهای ربات
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📌 سوالات رایج", callback_data="faq")],
-        [InlineKeyboardButton("📝 درخواست مشاوره حقوقی", url="https://mahzarbashi.ir/رزرو-وقت-مشاوره-وکیل-پایه-یک-دادگستری/")],
-        [InlineKeyboardButton("🌐 ورود به سایت محضرباشی", url="https://mahzarbashi.ir/")]
+        [InlineKeyboardButton("📝 رزرو مشاوره تخصصی",
+                              url="https://mahzarbashi.ir/رزرو-وقت-مشاوره-وکیل-پایه-یک-دادگستری/")],
+        [InlineKeyboardButton("🌐 ورود به سایت محضرباشی", url="https://mahzarbashi.ir/")],
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "سلام 🙂\nبه ربات محضرباشی خوش اومدید!\nلطفاً یکی از گزینه‌ها رو انتخاب کنید:",
-        reply_markup=reply_markup
+        "سلام 🙂 به ربات محضرباشی خوش اومدی!\nلطفاً یک گزینه را انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
-# نمایش سوالات متداول
-async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    keyboard = [[InlineKeyboardButton(q, callback_data=f"answer_{i}")] for i, (q, _) in enumerate(faq_list)]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("لطفاً یکی از سوالات زیر را انتخاب کنید:", reply_markup=reply_markup)
+    keyboard = [[InlineKeyboardButton(q, callback_data=f"ans_{i}")]
+                for i, (q, _) in enumerate(FAQ)]
+    await query.edit_message_text(
+        "لطفاً یکی از سوالات زیر را انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-# نمایش پاسخ سوال
 async def show_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    index = int(query.data.split("_")[1])
+    idx = int(query.data.split("_")[1])
+    q, a = FAQ[idx]
     await query.answer()
-    await query.edit_message_text(
-        f"❓ {faq_list[index][0]}\n\n💡 پاسخ:\n{faq_list[index][1]}"
-    )
+    await query.edit_message_text(f"❓ {q}\n\n💡 پاسخ:\n{a}")
 
-# اجرای ربات
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+# ---- ثبت هندلرها
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CallbackQueryHandler(show_faq, pattern="^faq$"))
+application.add_handler(CallbackQueryHandler(show_answer, pattern="^ans_"))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(faq, pattern="faq"))
-    app.add_handler(CallbackQueryHandler(show_answer, pattern="answer_"))
+# ---- آماده‌سازی اپ تلگرام هنگام بالا آمدن سرور
+async def _startup():
+    await application.initialize()
+    # اگر Render آدرس بیرونی را در ENV گذاشته باشد، وبهوک را ست می‌کنیم
+    ext = os.getenv("RENDER_EXTERNAL_URL")
+    if ext:
+        try:
+            await application.bot.set_webhook(url=f"{ext}/{TOKEN}")
+            logger.info("Webhook set to %s/%s", ext, TOKEN)
+        except Exception as e:
+            logger.exception("Failed to set webhook: %s", e)
+    await application.start()
 
-    app.run_polling()
+# در زمان import ماژول (gunicorn)، برنامه تلگرام را استارت کن
+asyncio.get_event_loop().run_until_complete(_startup())
 
-if __name__ == "__main__":
-    main()
+# ---- مسیر سلامت برای Render
+@flask_app.get("/health")
+def health():
+    return jsonify(status="ok"), 200
+
+# ---- مسیر دریافت آپدیت‌های تلگرام (همان مسیری که وبهوک رویش ست شده)
+@flask_app.post(f"/{TOKEN}")
+def telegram_webhook():
+    data = request.get_json(silent=True, force=True) or {}
+    try:
+        update = Update.de_json(data, application.bot)
+        asyncio.get_event_loop().create_task(application.process_update(update))
+    except Exception as e:
+        logger.exception("Update processing failed: %s", e)
+    return "OK", 200
