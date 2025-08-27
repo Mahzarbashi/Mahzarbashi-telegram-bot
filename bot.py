@@ -1,62 +1,75 @@
+import os
+import logging
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-import logging
 
-# --- تنظیمات لاگ ---
+# تنظیمات لاگ
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger("mahzarbashi-bot")
+logger = logging.getLogger(__name__)
 
-# --- توکن ربات ---
-TOKEN = "8310741380:AAHRrADEytsjTVZYtJle71e5twxFxqr556c"
+# گرفتن توکن ربات از متغیر محیطی
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("⚠️ لطفاً متغیر محیطی BOT_TOKEN را در Render ست کنید.")
+
+# ساخت اپلیکیشن تلگرام
+app_telegram = ApplicationBuilder().token(TOKEN).build()
+
+# Flask برای مدیریت Webhook
+flask_app = Flask(__name__)
 
 # --- سوالات متداول ---
-FAQ = [
+faq_list = [
     ("چگونه وقت مشاوره رزرو کنم؟", "برای رزرو وقت مشاوره از لینک زیر استفاده کنید:\nhttps://mahzarbashi.ir/رزرو-وقت-مشاوره-وکیل-پایه-یک-دادگستری/"),
-    ("آیا مشاوره رایگان است؟", "برخی مشاوره‌ها رایگان و برخی با هزینه هستند؛ لطفاً صفحه رزرو را بررسی کنید."),
-    ("مراحل گرفتن مهریه چیست؟", "برای دریافت مهریه می‌توانید از اجرای ثبت یا دادگاه خانواده اقدام کنید."),
-    ("مدارک لازم برای طلاق چیست؟", "مدارک کامل در سایت محضرباشی قابل مشاهده است."),
+    ("آیا مشاوره رایگان است؟", "بسته به نوع خدمت ممکن است رایگان یا غیررایگان باشد."),
+    ("مراحل گرفتن مهریه چیست؟", "جهت دریافت مهریه، از طریق دادگاه خانواده اقدام کنید."),
+    ("مدارک لازم برای طلاق چیست؟", "مدارک کامل در سایت محضرباشی موجود است."),
 ]
 
-# --- دکمه‌های منو ---
-def main_menu_keyboard():
-    return InlineKeyboardMarkup([
+# --- ساخت منوی اصلی ---
+def main_menu():
+    keyboard = [
         [InlineKeyboardButton("📌 سوالات رایج", callback_data="faq")],
         [InlineKeyboardButton("📝 رزرو مشاوره", url="https://mahzarbashi.ir/رزرو-وقت-مشاوره-وکیل-پایه-یک-دادگستری/")],
-        [InlineKeyboardButton("🌐 ورود به سایت", url="https://mahzarbashi.ir/")],
-    ])
+        [InlineKeyboardButton("🌐 ورود به سایت", url="https://mahzarbashi.ir/")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
-# --- استارت ---
-async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- دستور /start ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام 😊 به ربات محضرباشی خوش آمدید.\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-        reply_markup=main_menu_keyboard()
+        "سلام 😊\nبه ربات محضرباشی خوش آمدید.\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
+        reply_markup=main_menu()
     )
 
-# --- نمایش سوالات رایج ---
-async def faq_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- نمایش سوالات متداول ---
+async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    keyboard = [[InlineKeyboardButton(q, callback_data=f"faq_{i}")] for i, (q, _) in enumerate(FAQ)]
-    await query.edit_message_text("📌 سوالات متداول:", reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [[InlineKeyboardButton(q, callback_data=f"answer_{i}")] for i, (q, _) in enumerate(faq_list)]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("لطفاً یکی از سوالات زیر را انتخاب کنید:", reply_markup=reply_markup)
 
-# --- پاسخ به سوالات ---
-async def faq_answer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- نمایش پاسخ سوال انتخابی ---
+async def show_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    index = int(query.data.split("_")[1])
     await query.answer()
-    idx = int(query.data.split("_", 1)[1])
-    q, a = FAQ[idx]
-    await query.edit_message_text(f"❓ {q}\n\n💡 پاسخ:\n{a}")
+    await query.edit_message_text(f"❓ {faq_list[index][0]}\n\n💡 پاسخ:\n{faq_list[index][1]}")
 
-# --- اجرای ربات ---
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+# اضافه کردن هندلرها
+app_telegram.add_handler(CommandHandler("start", start))
+app_telegram.add_handler(CallbackQueryHandler(faq, pattern="faq"))
+app_telegram.add_handler(CallbackQueryHandler(show_answer, pattern="answer_"))
 
-    app.add_handler(CommandHandler("start", start_handler))
-    app.add_handler(CallbackQueryHandler(faq_menu_handler, pattern="faq$"))
-    app.add_handler(CallbackQueryHandler(faq_answer_handler, pattern="faq_"))
+# --- مسیر Webhook برای Telegram ---
+@flask_app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), app_telegram.bot)
+    app_telegram.update_queue.put(update)
+    return "OK", 200
 
-    print("ربات محضرباشی با موفقیت فعال شد ✅")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+# صفحه اصلی تست سرور
+@flask_app.route("/")
+def home():
