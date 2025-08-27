@@ -1,75 +1,80 @@
-import os
-import logging
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+import logging
+import os
 
-# تنظیمات لاگ
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger(__name__)
+# --- تنظیمات لاگ ---
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger("mahzarbashi-bot")
 
-# گرفتن توکن ربات از متغیر محیطی
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise RuntimeError("⚠️ لطفاً متغیر محیطی BOT_TOKEN را در Render ست کنید.")
-
-# ساخت اپلیکیشن تلگرام
-app_telegram = ApplicationBuilder().token(TOKEN).build()
-
-# Flask برای مدیریت Webhook
+# --- Flask app ---
 flask_app = Flask(__name__)
 
+# --- توکن ربات ---
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+bot = Bot(TOKEN)
+
 # --- سوالات متداول ---
-faq_list = [
+FAQ = [
     ("چگونه وقت مشاوره رزرو کنم؟", "برای رزرو وقت مشاوره از لینک زیر استفاده کنید:\nhttps://mahzarbashi.ir/رزرو-وقت-مشاوره-وکیل-پایه-یک-دادگستری/"),
-    ("آیا مشاوره رایگان است؟", "بسته به نوع خدمت ممکن است رایگان یا غیررایگان باشد."),
-    ("مراحل گرفتن مهریه چیست؟", "جهت دریافت مهریه، از طریق دادگاه خانواده اقدام کنید."),
-    ("مدارک لازم برای طلاق چیست؟", "مدارک کامل در سایت محضرباشی موجود است."),
+    ("آیا مشاوره رایگان است؟", "برخی مشاوره‌ها رایگان و برخی با هزینه هستند؛ لطفاً صفحه رزرو را بررسی کنید."),
+    ("مراحل گرفتن مهریه چیست؟", "برای دریافت مهریه می‌توانید از اجرای ثبت یا دادگاه خانواده اقدام کنید."),
+    ("مدارک لازم برای طلاق چیست؟", "مدارک کامل در سایت محضرباشی قابل مشاهده است."),
 ]
 
-# --- ساخت منوی اصلی ---
-def main_menu():
-    keyboard = [
+# --- دکمه‌های منو ---
+def main_menu_keyboard():
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("📌 سوالات رایج", callback_data="faq")],
         [InlineKeyboardButton("📝 رزرو مشاوره", url="https://mahzarbashi.ir/رزرو-وقت-مشاوره-وکیل-پایه-یک-دادگستری/")],
-        [InlineKeyboardButton("🌐 ورود به سایت", url="https://mahzarbashi.ir/")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+        [InlineKeyboardButton("🌐 ورود به سایت", url="https://mahzarbashi.ir/")],
+    ])
 
-# --- دستور /start ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- هندلرها ---
+async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام 😊\nبه ربات محضرباشی خوش آمدید.\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-        reply_markup=main_menu()
+        "سلام 😊 به ربات محضرباشی خوش آمدید.\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
+        reply_markup=main_menu_keyboard()
     )
 
-# --- نمایش سوالات متداول ---
-async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def faq_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    keyboard = [[InlineKeyboardButton(q, callback_data=f"answer_{i}")] for i, (q, _) in enumerate(faq_list)]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("لطفاً یکی از سوالات زیر را انتخاب کنید:", reply_markup=reply_markup)
+    keyboard = [[InlineKeyboardButton(q, callback_data=f"faq_{i}")] for i, (q, _) in enumerate(FAQ)]
+    await query.edit_message_text("📌 سوالات متداول:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- نمایش پاسخ سوال انتخابی ---
-async def show_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def faq_answer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    index = int(query.data.split("_")[1])
     await query.answer()
-    await query.edit_message_text(f"❓ {faq_list[index][0]}\n\n💡 پاسخ:\n{faq_list[index][1]}")
+    idx = int(query.data.split("_", 1)[1])
+    q, a = FAQ[idx]
+    await query.edit_message_text(f"❓ {q}\n\n💡 پاسخ:\n{a}")
 
-# اضافه کردن هندلرها
-app_telegram.add_handler(CommandHandler("start", start))
-app_telegram.add_handler(CallbackQueryHandler(faq, pattern="faq"))
-app_telegram.add_handler(CallbackQueryHandler(show_answer, pattern="answer_"))
+# --- راه‌اندازی Application ---
+app_builder = ApplicationBuilder().token(TOKEN).build()
+app_builder.add_handler(CommandHandler("start", start_handler))
+app_builder.add_handler(CallbackQueryHandler(faq_menu_handler, pattern="faq$"))
+app_builder.add_handler(CallbackQueryHandler(faq_answer_handler, pattern="faq_"))
 
-# --- مسیر Webhook برای Telegram ---
+# --- Webhook route ---
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), app_telegram.bot)
-    app_telegram.update_queue.put(update)
-    return "OK", 200
+    update = Update.de_json(request.get_json(force=True), bot)
+    import asyncio
+    asyncio.run(app_builder.process_update(update))
+    return "OK"
 
-# صفحه اصلی تست سرور
+# --- Route اصلی برای بررسی ---
 @flask_app.route("/")
-def home():
+def index():
+    return "ربات محضرباشی فعال است ✅"
+
+# --- اجرای Flask ---
+if __name__ == "__main__":
+    # قبل از اجرا روی Render، Webhook را روی تلگرام ست کنید:
+    # bot.set_webhook(url="https://<YOUR-RENDER-URL>/" + TOKEN)
+    flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
