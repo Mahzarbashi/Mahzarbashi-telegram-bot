@@ -1,43 +1,44 @@
-# app.py
+import os
 from flask import Flask, request
-from telegram import Bot, Update
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# =====================
-# تنظیمات ربات
-# =====================
-BOT_TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
-WEBHOOK_PATH = "/webhook"  # مسیر webhook
-bot = Bot(BOT_TOKEN)
-
-# =====================
-# تعریف اپلیکیشن Flask
-# =====================
+TOKEN = os.getenv("BOT_TOKEN")  # توکن ربات از محیط Render
 app = Flask(__name__)
 
-# مسیر Webhook
-@app.route(WEBHOOK_PATH, methods=['POST'])
+# ساخت اپلیکیشن تلگرام
+application = Application.builder().token(TOKEN).build()
+
+
+# دستور /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام 👋 خوش اومدی به ربات محضرباشی!")
+
+
+# پاسخ به پیام‌های متنی
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"پیام شما دریافت شد: {update.message.text}")
+
+
+# هندلرها
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+
+# وبهوک روت
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    try:
-        update = Update.de_json(request.get_json(force=True), bot)
-        if update.message:  # پیام متنی دریافت شد
-            chat_id = update.message.chat.id
-            text = update.message.text
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    application.update_queue.put_nowait(update)
+    return "ok", 200
 
-            # پاسخ ساده به پیام
-            bot.send_message(chat_id=chat_id, text=f"پیام شما دریافت شد: {text}")
 
-        return "OK", 200
-    except Exception as e:
-        print(f"Webhook Error: {e}")
-        return "Error", 500
-
-# صفحه اصلی برای تست سرویس
 @app.route("/")
 def index():
-    return "ربات زنده است ✅", 200
+    return "Mahzarbashi Telegram Bot is running!", 200
 
-# =====================
-# اجرای ربات (برای اجرا روی Render)
-# =====================
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 5000))
+    application.run_polling()  # فقط برای لوکال
+    app.run(host="0.0.0.0", port=port)
