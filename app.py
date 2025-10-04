@@ -1,29 +1,43 @@
+# app.py
 from flask import Flask, request
-import requests
+from telegram import Bot, Update
 
-TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
-URL = f"https://api.telegram.org/bot{TOKEN}/"
+# =====================
+# تنظیمات ربات
+# =====================
+BOT_TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
+WEBHOOK_PATH = "/webhook"  # مسیر webhook
+bot = Bot(BOT_TOKEN)
 
+# =====================
+# تعریف اپلیکیشن Flask
+# =====================
 app = Flask(__name__)
 
-@app.route('/webhook', methods=['POST'])
+# مسیر Webhook
+@app.route(WEBHOOK_PATH, methods=['POST'])
 def webhook():
-    data = request.get_json()
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
-        if text:
-            send_message(chat_id, f"📌 شما نوشتید:\n{text}")
-    return "ok", 200
+    try:
+        update = Update.de_json(request.get_json(force=True), bot)
+        if update.message:  # پیام متنی دریافت شد
+            chat_id = update.message.chat.id
+            text = update.message.text
 
-def send_message(chat_id, text):
-    url = URL + "sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload)
+            # پاسخ ساده به پیام
+            bot.send_message(chat_id=chat_id, text=f"پیام شما دریافت شد: {text}")
 
-@app.route('/')
-def home():
-    return "Bot is running!", 200
+        return "OK", 200
+    except Exception as e:
+        print(f"Webhook Error: {e}")
+        return "Error", 500
 
-if __name__ == '__main__':
+# صفحه اصلی برای تست سرویس
+@app.route("/")
+def index():
+    return "ربات زنده است ✅", 200
+
+# =====================
+# اجرای ربات (برای اجرا روی Render)
+# =====================
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
