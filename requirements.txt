@@ -1,4 +1,3 @@
-Flask
-requests
-gTTS
+flask
+python-telegram-bot==13.17
 gunicorn
