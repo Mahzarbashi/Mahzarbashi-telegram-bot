@@ -1,0 +1,12 @@
+from flask import Flask, request
+from telegram import Bot, Update
+
+app = Flask(__name__)
+BOT_TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
+bot = Bot(BOT_TOKEN)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    # اینجا تابع پردازش پیام‌ها را صدا بزن
+    return "OK"
