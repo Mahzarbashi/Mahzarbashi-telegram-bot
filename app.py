@@ -3,7 +3,7 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# گرفتن توکن از متغیر محیطی Render (توصیه امنیتی)
+# گرفتن توکن از متغیر محیطی Render (امن‌تر)
 TOKEN = os.environ.get("BOT_TOKEN", "اینجا_توکن_ربات_رو_قرار_بده")
 
 # ساخت Flask app
