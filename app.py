@@ -5,7 +5,7 @@ import os
 app = Flask(__name__)
 
 # توکن ربات تلگرام
-TOKEN = "توکن_ربات_تو_اینجا_قرار_بده"
+TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 def send_message(chat_id, text):
