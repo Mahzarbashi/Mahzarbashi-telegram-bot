@@ -1,20 +1,34 @@
-import os
-from telegram.ext import Application, CommandHandler
+from flask import Flask, request
+import requests
 
 TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TOKEN}"
 
-async def start(update, context):
-    await update.message.reply_text("سلام 👋 من ربات محضرباشی هستم.")
+app = Flask(__name__)
 
-def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8080)),
-        url_path=TOKEN,
-        webhook_url=f"https://mahzarbashi-bot.onrender.com/{TOKEN}"
-    )
+@app.route('/')
+def home():
+    return "ربات محضرباشی زنده است ✅"
 
-if __name__ == "__main__":
-    main()
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.get_json()
+
+    if "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "")
+
+        if text == "/start":
+            send_message(chat_id, "سلام 👋 به ربات محضرباشی خوش آمدید.\nلطفاً سوال خود را بپرسید.")
+        else:
+            send_message(chat_id, f"شما گفتید: {text}")
+
+    return {"ok": True}
+
+def send_message(chat_id, text):
+    url = f"{TELEGRAM_API_URL}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    requests.post(url, json=payload)
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=10000)
