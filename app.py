@@ -1,81 +1,65 @@
-from flask import Flask, request
-import requests
+from gtts import gTTS
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import os
-from gtts import gTTS  # برای تولید صوت
 
-app = Flask(__name__)
+# ========================
+# تنظیمات ربات
+# ========================
+BOT_TOKEN = "8310741380:AAHRrADEytsjTVZYtJle71e5twxFxqr556c"
 
-# توکن ربات
-TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
-BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
+# سوالات رایج و پاسخ‌ها
+FAQ = {
+    "چگونه سند ملک بگیرم؟": "برای گرفتن سند ملک، باید مراحل A و B و C را طی کنید...",
+    "هزینه ثبت قرارداد چقدر است؟": "هزینه ثبت قرارداد بستگی به نوع قرارداد دارد، معمولا بین X تا Y تومان است.",
+    "نحوه انتقال مالکیت خودرو؟": "برای انتقال مالکیت خودرو، ابتدا مدارک شناسایی و سند خودرو را آماده کنید و به دفترخانه مراجعه نمایید."
+}
 
-# تابع ارسال متن
-def send_message(chat_id, text, keyboard=None):
-    payload = {"chat_id": chat_id, "text": text}
-    if keyboard:
-        payload["reply_markup"] = keyboard
-    requests.post(f"{BASE_URL}/sendMessage", json=payload)
+# ========================
+# دستور /start
+# ========================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    welcome_text = (
+        "سلام! من دستیار حقوقی محضرباشی هستم.\n"
+        "می‌توانم به سوالات رایج حقوقی پاسخ بدهم.\n"
+        "اگر سوال شما تخصصی باشد، به وبسایت محضرباشی هدایت خواهید شد.\n"
+        "سوالت رو بپرسید:"
+    )
+    await update.message.reply_text(welcome_text)
 
-# تابع ارسال صوت
-def send_voice(chat_id, text):
-    try:
-        tts = gTTS(text=text, lang="fa")
-        tts.save("voice.ogg")
-        with open("voice.ogg", "rb") as f:
-            requests.post(f"{BASE_URL}/sendVoice", data={"chat_id": chat_id}, files={"voice": f})
-    except Exception as e:
-        print("Voice error:", e)
+# ========================
+# پردازش پیام کاربر
+# ========================
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    answer = FAQ.get(text)
 
-@app.route("/", methods=["GET"])
-def index():
-    return {"status": "ok", "bot": "Mahzarbashi Assistant"}
+    if answer:
+        # پاسخ متنی
+        await update.message.reply_text(answer)
+        # پاسخ صوتی
+        tts = gTTS(answer, lang="fa")
+        audio_file = "answer.mp3"
+        tts.save(audio_file)
+        await update.message.reply_voice(voice=open(audio_file, "rb"))
+        os.remove(audio_file)
+    else:
+        # سوال تخصصی → هدایت به سایت
+        msg = (
+            "سوال شما نیاز به بررسی تخصصی دارد.\n"
+            "لطفاً به وبسایت محضرباشی مراجعه کنید و با وکلای ما در تماس باشید:\n"
+            "https://www.mahzarbashi.ir"
+        )
+        await update.message.reply_text(msg)
 
-@app.route("/", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
-
-        if text == "/start":
-            keyboard = {
-                "keyboard": [
-                    [{"text": "📑 قراردادها"}, {"text": "⚖️ دعاوی حقوقی"}],
-                    [{"text": "🏛️ دفترخانه و محضر"}, {"text": "🌐 سایت محضرباشی"}]
-                ],
-                "resize_keyboard": True
-            }
-            msg = "سلام 👋\nمن دستیار محضرباشی هستم.\nمی‌تونم راهنمایی‌های حقوقی ساده بدم و برای سوالات تخصصی شما رو به سایت محضرباشی هدایت کنم."
-            send_message(chat_id, msg, keyboard)
-            send_voice(chat_id, msg)
-
-        elif text == "📑 قراردادها":
-            msg = "برای نمونه قراردادها به سایت مراجعه کنید: www.mahzarbashi.ir/contracts"
-            send_message(chat_id, msg)
-            send_voice(chat_id, msg)
-
-        elif text == "⚖️ دعاوی حقوقی":
-            msg = "برای دعاوی حقوقی جزئیات بیشتر در سایت موجود است: www.mahzarbashi.ir/lawsuits"
-            send_message(chat_id, msg)
-            send_voice(chat_id, msg)
-
-        elif text == "🏛️ دفترخانه و محضر":
-            msg = "سوالات رایج دفترخانه و محضر: www.mahzarbashi.ir/notary"
-            send_message(chat_id, msg)
-            send_voice(chat_id, msg)
-
-        elif text == "🌐 سایت محضرباشی":
-            msg = "برای مشاوره تخصصی وارد سایت شوید: www.mahzarbashi.ir"
-            send_message(chat_id, msg)
-            send_voice(chat_id, msg)
-
-        else:
-            msg = "متوجه نشدم. لطفاً از منوی پایین انتخاب کنید یا وارد سایت شوید: www.mahzarbashi.ir"
-            send_message(chat_id, msg)
-            send_voice(chat_id, msg)
-
-    return "ok"
-
+# ========================
+# اجرای ربات
+# ========================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("Bot is running...")
+    app.run_polling()
