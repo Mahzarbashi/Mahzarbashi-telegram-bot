@@ -1,8 +1,9 @@
-from telegram import Update, Bot
+from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from gtts import gTTS
 from flask import Flask, request
 import os
+import asyncio
 
 # ========================
 # تنظیمات ربات
@@ -64,7 +65,8 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_m
 @app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    application.process_update(update)
+    # اجرای async handler ها داخل event loop
+    asyncio.run(application.process_update(update))
     return "ok", 200
 
 @app.route("/")
