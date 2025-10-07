@@ -1,13 +1,9 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from gtts import gTTS
-from flask import Flask, request
 import os
-import threading
 
 BOT_TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
-WEBHOOK_PATH = "/webhook"
-app = Flask(__name__)
 
 FAQ = {
     "چگونه سند ملک بگیرم؟": "برای گرفتن سند ملک، باید مراحل A و B و C را طی کنید...",
@@ -15,9 +11,6 @@ FAQ = {
     "نحوه انتقال مالکیت خودرو؟": "برای انتقال مالکیت خودرو، ابتدا مدارک شناسایی و سند خودرو را آماده کنید و به دفترخانه مراجعه نمایید."
 }
 
-# ========================
-# فرمان /start
-# ========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "سلام! من دستیار حقوقی محضرباشی هستم.\n"
@@ -27,9 +20,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_text)
 
-# ========================
-# پردازش پیام‌ها
-# ========================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     answer = FAQ.get(text)
@@ -57,23 +47,13 @@ application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # ========================
-# اجرا در Thread جداگانه برای Webhook
+# اجرای Webhook روی Render
 # ========================
-def run_app():
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-threading.Thread(target=run_app).start()
-
-# ========================
-# مسیر وب‌هوک Flask
-# ========================
-@app.route(WEBHOOK_PATH, methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.create_task(application.process_update(update))
-    return "ok", 200
-
-@app.route("/")
-def index():
-    return "Bot is running!", 200
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path=BOT_TOKEN,
+        webhook_url=f"https://mahzarbashi-telegram-bot-2-fh68.onrender.com/{BOT_TOKEN}"
+    )
