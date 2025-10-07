@@ -7,7 +7,8 @@ import os
 # ========================
 # تنظیمات ربات
 # ========================
-BOT_TOKEN = "8310741380:AAHRrADEytsjTVZYtJle71e5twxFxqr556c"
+BOT_TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
+bot = Bot(token=BOT_TOKEN)
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 
