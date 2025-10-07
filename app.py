@@ -3,11 +3,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from gtts import gTTS
 from flask import Flask, request
 import os
-import asyncio
+import threading
 
-# ========================
-# تنظیمات ربات
-# ========================
 BOT_TOKEN = "8249435097:AAF8PSgEXDVYWYBIXn_q45bHKID_aYDAtqw"
 WEBHOOK_PATH = "/webhook"
 app = Flask(__name__)
@@ -60,22 +57,23 @@ application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # ========================
+# اجرا در Thread جداگانه برای Webhook
+# ========================
+def run_app():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+threading.Thread(target=run_app).start()
+
+# ========================
 # مسیر وب‌هوک Flask
 # ========================
 @app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    # اجرای async handler ها داخل event loop
-    asyncio.run(application.process_update(update))
+    application.create_task(application.process_update(update))
     return "ok", 200
 
 @app.route("/")
 def index():
     return "Bot is running!", 200
-
-# ========================
-# اجرا
-# ========================
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
