@@ -25,8 +25,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
 
-    # درخواست به OpenAI
     try:
+        # درخواست به OpenAI
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -34,7 +34,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "user", "content": user_message}
             ]
         )
-
         answer = response.choices[0].message.content
         await update.message.reply_text(answer)
 
