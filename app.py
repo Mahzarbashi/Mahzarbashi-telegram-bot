@@ -4,8 +4,10 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from openai import OpenAI
 
-# گرفتن کلیدها از Environment Variables
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+# 🔑 توکن جدید تلگرام (که از BotFather گرفتی)
+TELEGRAM_BOT_TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"
+
+# 🔑 کلید OpenAI باید از Environment Variable خونده بشه
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # اتصال به OpenAI
