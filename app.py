@@ -1,57 +1,69 @@
+# app.py
 import os
-import telebot
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
 import openai
+from gtts import gTTS
 
-# گرفتن متغیرها از محیط
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# چاپ برای بررسی در لاگ
-print("========== DEBUG ==========")
-print("TELEGRAM_TOKEN:", TELEGRAM_TOKEN)
-print("OPENAI_API_KEY:", OPENAI_API_KEY[:10] if OPENAI_API_KEY else None)
-print("===========================")
-
-# اگر توکن نبود، ارور بده
+# ---- تنظیم کلیدها ----
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     raise ValueError("❌ TELEGRAM_TOKEN یا OPENAI_API_KEY پیدا نشد. لطفاً Environment Variables را در Render چک کنید.")
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
 openai.api_key = OPENAI_API_KEY
+bot = Bot(token=TELEGRAM_TOKEN)
+app = Flask(__name__)
+dispatcher = Dispatcher(bot, None, use_context=True)
 
-BASE_PROMPT = """شما دستیار حقوقی سایت محضرباشی هستید.
-لحن شما رسمی، روشن و حرفه‌ای است.
-اگر سؤال خیلی تخصصی یا نیاز به وکیل داشت، کاربر را به سایت www.mahzarbashi.ir هدایت کنید.
-"""
-
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    user_text = message.text
-
-    # دریافت پاسخ متنی از GPT
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": BASE_PROMPT},
-            {"role": "user", "content": user_text}
-        ]
+# ---- دستور /start ----
+def start(update, context):
+    update.message.reply_text(
+        "سلام! من ربات محضرباشی هستم. می‌توانم به سوالات حقوقی شما پاسخ بدهم.\n"
+        "برای سوالات تخصصی، حتماً به سایت ما مراجعه کنید: www.mahzarbashi.ir"
     )
-    answer = response.choices[0].message.content.strip()
 
-    # ارسال پاسخ متنی
-    bot.reply_to(message, answer)
+# ---- پاسخ به پیام‌ها ----
+def handle_message(update, context):
+    user_text = update.message.text
 
-    # تبدیل پاسخ به صوت با OpenAI TTS
-    speech_file = "reply.ogg"
-    with open(speech_file, "wb") as f:
-        audio_response = openai.audio.speech.create(
-            model="gpt-4o-mini-tts",
-            voice="alloy",
-            input=answer
+    # اگر سوال تخصصی باشد، هدایت به سایت
+    if len(user_text) > 200 or any(word in user_text.lower() for word in ["قانون", "حقوق", "وکالت"]):
+        reply_text = f"سوال شما تخصصی است. لطفاً برای پاسخ کامل به سایت مراجعه کنید: www.mahzarbashi.ir"
+    else:
+        # پاسخ هوش مصنوعی
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": user_text}],
+            max_tokens=300
         )
-        f.write(audio_response.read())
+        reply_text = response['choices'][0]['message']['content']
 
-    with open(speech_file, "rb") as audio:
-        bot.send_voice(message.chat.id, audio)
+    update.message.reply_text(reply_text)
 
-bot.infinity_polling()
+    # ساخت پاسخ صوتی
+    tts = gTTS(text=reply_text, lang='fa')
+    audio_path = f"voice_{update.message.message_id}.mp3"
+    tts.save(audio_path)
+    with open(audio_path, 'rb') as audio_file:
+        update.message.reply_voice(audio_file)
+    os.remove(audio_path)
+
+# ---- افزودن هندلرها ----
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+
+# ---- وبهوک ----
+@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "OK"
+
+@app.route("/")
+def index():
+    return "ربات محضرباشی فعال است ✅"
+
+if __name__ == "__main__":
+    app.run(port=5000)
