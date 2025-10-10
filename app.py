@@ -21,17 +21,20 @@ application = Application.builder().token(TELEGRAM_TOKEN).build()
 # ---- دستور /start ----
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام! من ربات محضرباشی هستم. می‌توانم به سوالات حقوقی شما پاسخ بدهم.\n"
-        "برای سوالات تخصصی، حتماً به سایت ما مراجعه کنید: www.mahzarbashi.ir"
+        "سلام! 👋\n"
+        "من ربات *محضرباشی* هستم. می‌تونم به سوالات حقوقی شما پاسخ بدم.\n"
+        "برای پرسش‌های تخصصی حتماً به سایت مراجعه کنید:\n"
+        "👉 www.mahzarbashi.ir",
+        parse_mode="Markdown"
     )
 
 # ---- پاسخ به پیام‌ها ----
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
 
-    # اگر سوال تخصصی باشد، هدایت به سایت
+    # اگر سوال تخصصی باشد → هدایت به سایت
     if len(user_text) > 200 or any(word in user_text.lower() for word in ["قانون", "حقوق", "وکالت"]):
-        reply_text = f"سوال شما تخصصی است. لطفاً برای پاسخ کامل به سایت مراجعه کنید: www.mahzarbashi.ir"
+        reply_text = "سوال شما تخصصی است. لطفاً برای پاسخ کامل به سایت مراجعه کنید: www.mahzarbashi.ir"
     else:
         # پاسخ هوش مصنوعی
         response = openai.ChatCompletion.create(
@@ -41,6 +44,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         reply_text = response['choices'][0]['message']['content']
 
+    # ارسال متن
     await update.message.reply_text(reply_text)
 
     # ساخت پاسخ صوتی
