@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request
-from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import openai
 from gtts import gTTS
 
@@ -20,15 +20,50 @@ application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 # ---- دستور /start ----
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("👩‍⚖️ مهریه", callback_data="faq_mehrieh")],
+        [InlineKeyboardButton("💔 طلاق", callback_data="faq_talagh")],
+        [InlineKeyboardButton("🏠 اجاره‌نامه", callback_data="faq_ejare")],
+        [InlineKeyboardButton("💳 چک", callback_data="faq_cheque")],
+        [InlineKeyboardButton("🌐 سایت محضرباشی", url="https://www.mahzarbashi.ir")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
     await update.message.reply_text(
-        "سلام! 👋\n"
-        "من ربات *محضرباشی* هستم. می‌تونم به سوالات حقوقی شما پاسخ بدم.\n"
-        "برای پرسش‌های تخصصی حتماً به سایت مراجعه کنید:\n"
-        "👉 www.mahzarbashi.ir",
-        parse_mode="Markdown"
+        "سلام! 👋\nمن ربات *محضرباشی* هستم.\n"
+        "می‌تونی یکی از موضوعات رایج زیر رو انتخاب کنی یا سوالت رو مستقیم بپرسی:",
+        parse_mode="Markdown",
+        reply_markup=reply_markup
     )
 
-# ---- پاسخ به پیام‌ها ----
+# ---- پاسخ به کلیک روی دکمه‌ها ----
+async def faq_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "faq_mehrieh":
+        reply_text = "📌 *مهریه*: زن هر زمان بخواهد می‌تواند مهریه‌اش را مطالبه کند. اجرای مهریه از طریق دادگاه یا اجرای ثبت امکان‌پذیر است."
+    elif query.data == "faq_talagh":
+        reply_text = "📌 *طلاق*: برای طلاق توافقی نیاز به حضور زوجین در دادگاه و توافق بر سر مهریه، حضانت و جهیزیه وجود دارد."
+    elif query.data == "faq_ejare":
+        reply_text = "📌 *اجاره‌نامه*: قرارداد اجاره باید کتبی و با ذکر مدت و مبلغ تنظیم شود. در غیر این صورت مشکلات حقوقی پیش می‌آید."
+    elif query.data == "faq_cheque":
+        reply_text = "📌 *چک*: در صورت برگشت چک، دارنده می‌تواند گواهی عدم پرداخت گرفته و از طریق دادگاه یا اجرای ثبت اقدام کند."
+    else:
+        reply_text = "لطفاً برای اطلاعات بیشتر به سایت مراجعه کنید: www.mahzarbashi.ir"
+
+    # ارسال متن
+    await query.message.reply_text(reply_text, parse_mode="Markdown")
+
+    # ارسال ویس
+    tts = gTTS(text=reply_text, lang='fa')
+    audio_path = f"voice_{query.id}.mp3"
+    tts.save(audio_path)
+    with open(audio_path, 'rb') as audio_file:
+        await query.message.reply_voice(audio_file)
+    os.remove(audio_path)
+
+# ---- پاسخ به پیام‌های کاربر ----
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
 
@@ -44,10 +79,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         reply_text = response['choices'][0]['message']['content']
 
-    # ارسال متن
     await update.message.reply_text(reply_text)
 
-    # ساخت پاسخ صوتی
+    # ارسال ویس
     tts = gTTS(text=reply_text, lang='fa')
     audio_path = f"voice_{update.message.message_id}.mp3"
     tts.save(audio_path)
@@ -57,6 +91,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---- افزودن هندلرها ----
 application.add_handler(CommandHandler("start", start))
+application.add_handler(CallbackQueryHandler(faq_handler))
 application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
 # ---- وبهوک ----
