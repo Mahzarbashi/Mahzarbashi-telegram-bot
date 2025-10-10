@@ -1,68 +1,46 @@
 import os
 import telebot
-from flask import Flask, request
-import pyttsx3
+import openai
 
-TOKEN = os.getenv("BOT_TOKEN", "اینجا_توکن_خودت")
-bot = telebot.TeleBot(TOKEN)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-app = Flask(__name__)
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+openai.api_key = OPENAI_API_KEY
 
-# فیلتر سوالات حقوقی
-def is_legal_question(text):
-    keywords = ["طلاق", "مهریه", "اجاره", "قرارداد", "ملک", "دادگاه", "قانون", "شکایت", "حقوقی"]
-    return any(word in text for word in keywords)
+BASE_PROMPT = """شما دستیار حقوقی سایت محضرباشی هستید.
+لحن شما رسمی، روشن و حرفه‌ای است.
+اگر سؤال خیلی تخصصی یا نیاز به وکیل داشت، کاربر را به سایت www.mahzarbashi.ir هدایت کنید.
+"""
 
-# ارسال صوت با pyttsx3
-def send_voice(chat_id, text):
-    engine = pyttsx3.init()
-    engine.save_to_file(text, "reply.mp3")
-    engine.runAndWait()
-    with open("reply.mp3", "rb") as voice:
-        bot.send_voice(chat_id, voice)
-
-# پیام خوشامد
-def get_intro_message():
-    return (
-        "سلام دوست خوبم 🌸\n"
-        "من ربات محضرباشی هستم ✨\n"
-        "می‌تونی سوال حقوقی‌ت رو بپرسی و من با زبانی ساده راهنمایی‌ت می‌کنم. "
-        "اگر موضوعت تخصصی باشه، بهت پیشنهاد می‌کنم مستقیم با وکیل پایه یک صحبت کنی 👩‍⚖️👨‍⚖️.\n\n"
-        "در سایت [mahzarbashi.ir](https://www.mahzarbashi.ir) "
-        "هم می‌تونی راهنمایی بگیری و هم مشاوره تلفنی با وکیل پایه یک داشته باشی ☎️"
-    )
-
-# هندلر /start
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    text = get_intro_message()
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-    send_voice(message.chat.id, text)
-
-# هندلر پیام‌ها
-@bot.message_handler(func=lambda m: True)
+@bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    if not is_legal_question(message.text):
-        reply = "دوست عزیز 🌹 این ربات فقط به پرسش‌های حقوقی پاسخ می‌ده."
-        bot.send_message(message.chat.id, reply)
-        send_voice(message.chat.id, reply)
-        return
+    user_text = message.text
 
-    reply = f"سوالت رو دریافت کردم ✅\nموضوع: {message.text}\nپاسخ: این یک راهنمایی اولیه حقوقی است..."
-    bot.send_message(message.chat.id, reply)
-    send_voice(message.chat.id, reply)
+    # دریافت پاسخ متنی از GPT
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": BASE_PROMPT},
+            {"role": "user", "content": user_text}
+        ]
+    )
+    answer = response.choices[0].message.content.strip()
 
-# وبهوک
-@app.route("/" + TOKEN, methods=["POST"])
-def getMessage():
-    json_str = request.get_data().decode("UTF-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "ok", 200
+    # ارسال پاسخ متنی
+    bot.reply_to(message, answer)
 
-@app.route("/", methods=["GET"])
-def index():
-    return "Mahzarbashi Bot is running ✅", 200
+    # تبدیل پاسخ به صوت با OpenAI TTS
+    speech_file = "reply.ogg"
+    with open(speech_file, "wb") as f:
+        audio_response = openai.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice="alloy",  # صدای حرفه‌ای
+            input=answer
+        )
+        f.write(audio_response.read())
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    with open(speech_file, "rb") as audio:
+        bot.send_voice(message.chat.id, audio)
+
+bot.infinity_polling()
