@@ -1,62 +1,54 @@
 import os
-from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from openai import OpenAI
+import telebot
+import pyttsx3
+import re
 
-# 🔑 توکن جدید تلگرام (که از BotFather گرفتی)
-TELEGRAM_BOT_TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"
+TOKEN = os.getenv("BOT_TOKEN", "اینجا_توکن_بات_خودت")
+bot = telebot.TeleBot(TOKEN)
 
-# 🔑 کلید OpenAI باید از Environment Variable خونده بشه
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+# تابع بررسی اینکه سوال حقوقی هست یا نه
+def is_legal_question(text):
+    keywords = ["طلاق", "مهریه", "اجاره", "قرارداد", "ملک", "دادگاه", "قانون", "شکایت", "حقوقی"]
+    return any(word in text for word in keywords)
 
-# اتصال به OpenAI
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# ساخت اپلیکیشن تلگرام
-telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-
-# ساخت اپ Flask
-app = Flask(__name__)
-
-# /start command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام 👋 من ربات محضرباشی هستم. هر سوالی داری بپرس!")
-
-# هندل پیام‌ها
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
-
-    try:
-        # درخواست به OpenAI
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "تو یک مشاور حقوقی هوشمند هستی. سوالات ساده را پاسخ بده، اما اگر سوال تخصصی و مهم بود کاربر را به وبسایت محضرباشی (www.mahzarbashi.ir) هدایت کن."},
-                {"role": "user", "content": user_message}
-            ]
-        )
-        answer = response.choices[0].message.content
-        await update.message.reply_text(answer)
-
-    except Exception as e:
-        await update.message.reply_text("مشکلی پیش آمد، لطفاً دوباره تلاش کن.")
-
-# ثبت هندلرها
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-# Flask route برای وبهوک
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-    telegram_app.update_queue.put_nowait(update)
-    return "ok", 200
-
-if __name__ == "__main__":
-    telegram_app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
-        url_path="webhook",
-        webhook_url=f"{os.environ.get('RENDER_EXTERNAL_URL')}/webhook"
+# متن اصلی راهنما
+def get_intro_message():
+    return (
+        "سلام دوست خوبم 🌸\n"
+        "اینجا ربات محضرباشی هستم ✨\n"
+        "می‌تونی سوال حقوقی‌ت رو بپرسی و من با زبانی ساده راهنمایی‌ت می‌کنم. "
+        "اگر موضوعت تخصصی باشه، بهت پیشنهاد می‌کنم مستقیم با وکیل پایه یک صحبت کنی 👩‍⚖️👨‍⚖️.\n\n"
+        "در سایت [mahzarbashi.ir](https://www.mahzarbashi.ir) "
+        "هم می‌تونی راهنمایی بگیری و هم مشاوره تلفنی با وکیل پایه یک داشته باشی ☎️"
     )
+
+# ساخت و ارسال صوت با pyttsx3 (خیلی سریع‌تر از gTTS)
+def send_voice(chat_id, text):
+    engine = pyttsx3.init()
+    engine.save_to_file(text, "reply.mp3")
+    engine.runAndWait()
+    with open("reply.mp3", "rb") as voice:
+        bot.send_voice(chat_id, voice)
+
+# /start
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    text = get_intro_message()
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+    send_voice(message.chat.id, text)
+
+# پاسخ به پیام‌ها
+@bot.message_handler(func=lambda m: True)
+def handle_message(message):
+    if not is_legal_question(message.text):
+        reply = "دوست عزیز 🌹 این ربات فقط به پرسش‌های حقوقی پاسخ می‌ده."
+        bot.send_message(message.chat.id, reply)
+        send_voice(message.chat.id, reply)
+        return
+
+    # اگر سوال حقوقی بود → جواب نمایشی (اینجا بعداً می‌تونیم GPT وصل کنیم)
+    reply = f"سوالت رو دریافت کردم ✅\nموضوع: {message.text}\nپاسخ: این یک راهنمایی اولیه حقوقی است..."
+    bot.send_message(message.chat.id, reply)
+    send_voice(message.chat.id, reply)
+
+bot.polling()
