@@ -1,3 +1,4 @@
-Flask==2.3.3
-python-telegram-bot[webhooks]==20.4
-openai==1.37.1
+pyTelegramBotAPI==4.23.0
+pyttsx3==2.90
+Flask==3.0.3
+gunicorn==22.0.0
