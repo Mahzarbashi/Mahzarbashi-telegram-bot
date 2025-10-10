@@ -2,8 +2,19 @@ import os
 import telebot
 import openai
 
+# گرفتن متغیرها از محیط
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# چاپ برای بررسی در لاگ
+print("========== DEBUG ==========")
+print("TELEGRAM_TOKEN:", TELEGRAM_TOKEN)
+print("OPENAI_API_KEY:", OPENAI_API_KEY[:10] if OPENAI_API_KEY else None)
+print("===========================")
+
+# اگر توکن نبود، ارور بده
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    raise ValueError("❌ TELEGRAM_TOKEN یا OPENAI_API_KEY پیدا نشد. لطفاً Environment Variables را در Render چک کنید.")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 openai.api_key = OPENAI_API_KEY
@@ -35,7 +46,7 @@ def handle_message(message):
     with open(speech_file, "wb") as f:
         audio_response = openai.audio.speech.create(
             model="gpt-4o-mini-tts",
-            voice="alloy",  # صدای حرفه‌ای
+            voice="alloy",
             input=answer
         )
         f.write(audio_response.read())
