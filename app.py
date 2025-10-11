@@ -8,6 +8,9 @@ import io
 # --- تنظیمات API ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # مثلا https://your-app-name.onrender.com/
+PORT = int(os.environ.get("PORT", 8443))
+
 openai.api_key = OPENAI_API_KEY
 
 # --- دکمه‌های موضوعات حقوقی ---
@@ -50,7 +53,6 @@ def is_advanced_question(user_message: str) -> bool:
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
 
-    # سوالات خیلی تخصصی
     if is_advanced_question(user_message):
         reply_text = (
             "❗ سوال شما خیلی تخصصی است.\n"
@@ -60,7 +62,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply_text, parse_mode="Markdown")
         return
 
-    # پاسخ از OpenAI
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[
@@ -71,10 +72,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     answer_text = response.choices[0].message.content
 
-    # ارسال متن
     await update.message.reply_text(answer_text)
 
-    # تولید صوت در حافظه و ارسال مستقیم
     tts = gTTS(answer_text, lang="fa")
     audio_fp = io.BytesIO()
     tts.write_to_fp(audio_fp)
@@ -87,5 +86,10 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# --- اجرای ربات ---
-app.run_polling()
+# --- اجرای وب‌هوک برای Render ---
+app.run_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=TELEGRAM_TOKEN,
+    webhook_url=f"{WEBHOOK_URL}{TELEGRAM_TOKEN}"
+)
