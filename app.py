@@ -5,42 +5,52 @@ import os
 from gtts import gTTS
 import io
 
+# --- تنظیمات API ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
-# دکمه‌های موضوعی حقوقی
+# --- دکمه‌های موضوعات حقوقی ---
 def get_keyboard():
     keyboard = [
         [InlineKeyboardButton("مهریه", callback_data="مهریه"),
          InlineKeyboardButton("طلاق", callback_data="طلاق")],
         [InlineKeyboardButton("اجاره و املاک", callback_data="املاک"),
-         InlineKeyboardButton("وصیت و ارث", callback_data="ارث")]
+         InlineKeyboardButton("وصیت و ارث", callback_data="ارث")],
+        [InlineKeyboardButton("قراردادها", callback_data="قرارداد"),
+         InlineKeyboardButton("جرایم و تخلفات", callback_data="جرایم")],
+        [InlineKeyboardButton("ثبت شرکت و کسب‌وکار", callback_data="شرکت"),
+         InlineKeyboardButton("سایر موضوعات حقوقی", callback_data="سایر")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# --- پیام خوشامدگویی ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام! 👋\nمن دستیار حقوقی محضرباشی هستم. سوالت رو بپرس یا یکی از موضوعات زیر رو انتخاب کن:",
+        "سلام! 👋\nمن دستیار حقوقی محضرباشی هستم. می‌تونی سوال حقوقی‌ت رو همینجا تایپ کنی یا از موضوعات زیر انتخاب کنی:",
         reply_markup=get_keyboard()
     )
 
-# پاسخ به دکمه‌ها
+# --- پاسخ به دکمه‌ها ---
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     topic = query.data
     await query.message.reply_text(f"شما موضوع «{topic}» را انتخاب کردید. لطفاً سوال خود را تایپ کنید:")
 
-# بررسی سوال تخصصی
+# --- تشخیص سوال تخصصی ---
 def is_advanced_question(user_message: str) -> bool:
-    advanced_keywords = ["سازمان قضایی", "ماده قانونی", "پرونده", "دادگاه عالی", "ماده ۲۱۳"]
+    advanced_keywords = [
+        "سازمان قضایی", "ماده قانونی", "پرونده", 
+        "دادگاه عالی", "ماده ۲۱۳", "پرونده قضایی", "وکالت"
+    ]
     return any(word in user_message for word in advanced_keywords)
 
-# پاسخ به سوال کاربر
+# --- پاسخ به سوال کاربر ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
 
+    # سوالات خیلی تخصصی
     if is_advanced_question(user_message):
         reply_text = (
             "❗ سوال شما خیلی تخصصی است.\n"
@@ -50,14 +60,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply_text, parse_mode="Markdown")
         return
 
-    # پاسخ OpenAI
+    # پاسخ از OpenAI
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[
-            {"role": "system", "content": "تو یک مشاور حقوقی صمیمی و حرفه‌ای هستی."},
+            {"role": "system", "content": "تو یک مشاور حقوقی صمیمی و حرفه‌ای هستی که پاسخ دوستانه، کامل و قابل فهم به کاربران می‌دهی."},
             {"role": "user", "content": user_message}
         ],
-        max_tokens=400
+        max_tokens=500
     )
     answer_text = response.choices[0].message.content
 
@@ -71,10 +81,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     audio_fp.seek(0)
     await update.message.reply_voice(voice=audio_fp)
 
-# ساخت اپلیکیشن و هندلرها
+# --- ایجاد اپلیکیشن و هندلرها ---
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+# --- اجرای ربات ---
 app.run_polling()
