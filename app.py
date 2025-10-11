@@ -1,92 +1,72 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-import openai
 import os
+from aiohttp import web
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from gtts import gTTS
-import io
+import openai
+import asyncio
 
-# --- تنظیمات محیط ---
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # مثل https://mahzarbashi-telegram-bot.onrender.com/
-PORT = int(os.environ.get("PORT", 8443))
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 openai.api_key = OPENAI_API_KEY
 
-# --- دکمه‌ها ---
-def get_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👰 مهریه", callback_data="مهریه"),
-         InlineKeyboardButton("💔 طلاق", callback_data="طلاق")],
-        [InlineKeyboardButton("🏠 اجاره و املاک", callback_data="املاک"),
-         InlineKeyboardButton("⚖️ وصیت و ارث", callback_data="ارث")],
-        [InlineKeyboardButton("📄 قراردادها", callback_data="قرارداد"),
-         InlineKeyboardButton("🚔 جرایم و تخلفات", callback_data="جرایم")],
-        [InlineKeyboardButton("🏢 ثبت شرکت", callback_data="شرکت"),
-         InlineKeyboardButton("🔹 سایر موارد", callback_data="سایر")]
-    ])
-
-# --- شروع ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "سلام 👋 من دستیار حقوقی محضرباشی هستم.\n"
-        "سؤالت رو بپرس یا یکی از موضوعات زیر رو انتخاب کن 👇",
-        reply_markup=get_keyboard()
-    )
-
-# --- دکمه‌ها ---
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.message.reply_text(f"شما موضوع «{query.data}» را انتخاب کردید. حالا سوال خودت رو بنویس 🌸")
-
-# --- تشخیص سوال تخصصی ---
-def is_advanced_question(text):
-    advanced = ["ماده", "پرونده", "دادگاه", "وکالت", "دادسرا", "قانون"]
-    return any(word in text for word in advanced)
-
-# --- پاسخ ---
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-
-    if is_advanced_question(text):
-        await update.message.reply_text(
-            "❗ سؤال شما نیاز به بررسی دقیق دارد.\n"
-            "برای مشاوره تخصصی وارد سایت شوید 👇\n"
-            "🌐 [mahzarbashi.ir](https://mahzarbashi.ir)",
-            parse_mode="Markdown"
-        )
-        return
-
-    response = openai.ChatCompletion.create(
+# 🎯 پاسخ‌دهی هوش مصنوعی
+async def ask_openai(prompt: str):
+    response = await openai.ChatCompletion.acreate(
         model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "تو یک مشاور حقوقی حرفه‌ای و صمیمی هستی که پاسخ‌های دقیق و قابل فهم می‌نویسد."},
-            {"role": "user", "content": text}
-        ]
+        messages=[{"role": "user", "content": prompt}]
     )
-    answer = response.choices[0].message.content
+    return response.choices[0].message["content"]
 
-    await update.message.reply_text(answer)
+# 🎤 تبدیل پاسخ به صدا
+def text_to_speech(text):
+    tts = gTTS(text=text, lang='fa')
+    path = "/tmp/voice.mp3"
+    tts.save(path)
+    return path
 
-    tts = gTTS(answer, lang="fa")
-    audio = io.BytesIO()
-    tts.write_to_fp(audio)
-    audio.seek(0)
-    await update.message.reply_voice(voice=audio)
+# ⚙️ شروع ربات با منوی دکمه‌ای
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [
+        [KeyboardButton("👩‍❤️‍👨 طلاق"), KeyboardButton("💰 مهریه")],
+        [KeyboardButton("🏠 ارث"), KeyboardButton("🧾 اجاره‌نامه")],
+        [KeyboardButton("⚖️ سایر سوالات حقوقی")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+    await update.message.reply_text("سلام 👋 به ربات مشاور حقوقی محضرباشی خوش اومدی.\nیکی از موضوعات زیر رو انتخاب کن:", reply_markup=reply_markup)
 
-# --- اپلیکیشن ---
+# 📩 پاسخ به پیام‌ها
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    await update.message.reply_text("سؤالت رو دریافت کردم ✅\nلطفاً چند لحظه صبر کن...")
+
+    ai_text = await ask_openai(f"پاسخ حقوقی به زبان ساده برای: {user_text}")
+    await update.message.reply_text(ai_text)
+
+    voice_path = text_to_speech(ai_text)
+    await update.message.reply_voice(voice=open(voice_path, 'rb'))
+
+# 🧩 ساخت اپلیکیشن
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(button))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# --- Webhook ---
+# 🌐 تنظیم وب‌سرور برای Render
+async def index(request):
+    return web.Response(text="Mahzarbashi Bot is running ✅")
+
+async def run():
+    runner = web.AppRunner(web.Application())
+    runner.app.router.add_get("/", index)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", "10000")))
+    await site.start()
+    print("🚀 Bot is live on Render...")
+
+    await app.initialize()
+    await app.start()
+    await asyncio.Event().wait()
+
 if __name__ == "__main__":
-    print("🚀 Starting webhook on Render...")
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=TELEGRAM_TOKEN,
-        webhook_url=f"{WEBHOOK_URL}{TELEGRAM_TOKEN}"
-    )
+    asyncio.run(run())
