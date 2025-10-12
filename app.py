@@ -6,13 +6,11 @@ from gtts import gTTS
 import openai
 import asyncio
 
-# 🔑 گرفتن توکن‌ها از تنظیمات Render
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 openai.api_key = OPENAI_API_KEY
 
-# 🎯 پاسخ از ChatGPT
 async def ask_openai(prompt: str):
     response = await openai.ChatCompletion.acreate(
         model="gpt-4o-mini",
@@ -20,14 +18,12 @@ async def ask_openai(prompt: str):
     )
     return response.choices[0].message["content"]
 
-# 🎤 تبدیل پاسخ به صوت
 def text_to_speech(text):
     tts = gTTS(text=text, lang='fa')
     path = "/tmp/voice.mp3"
     tts.save(path)
     return path
 
-# 🚀 دکمه‌های اصلی
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = [
         [KeyboardButton("👩‍❤️‍👨 طلاق"), KeyboardButton("💰 مهریه")],
@@ -41,7 +37,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-# 💬 پاسخ به پیام‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     await update.message.reply_text("سؤالت دریافت شد ✅ لطفاً چند لحظه صبر کن...")
@@ -52,14 +47,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     voice_path = text_to_speech(ai_text)
     await update.message.reply_voice(voice=open(voice_path, 'rb'))
 
-# ⚙️ ساخت ربات
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# 🌐 وب‌سرور برای Render
 async def index(request):
-    return web.Response(text="✅ Mahzarbashi Assistant is running")
+    return web.Response(text="✅ Mahzarbashi Bot is running")
 
 async def run():
     runner = web.AppRunner(web.Application())
