@@ -14,7 +14,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    response_text = f"این یک راهنمایی اولیه است درباره: {text}\nبرای مشاوره تخصصی وارد سایت شو 🌐 mahzarbashi.ir"
+    response_text = f"📘 راهنمایی اولیه درباره: {text}\nبرای مشاوره تخصصی وارد سایت شو 🌐 mahzarbashi.ir"
 
     # پاسخ متنی
     await update.message.reply_text(response_text)
