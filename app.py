@@ -4,10 +4,20 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 from gtts import gTTS
 import openai
 from aiohttp import web
+import sys
 
 # توکن‌ها از متغیرهای محیطی Render
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# بررسی اولیه توکن‌ها
+if not TELEGRAM_TOKEN:
+    print("❌ خطا: TELEGAM_TOKEN تعریف نشده! لطفاً Environment Variables را در Render چک کنید.")
+    sys.exit(1)
+
+if not OPENAI_API_KEY:
+    print("❌ خطا: OPENAI_API_KEY تعریف نشده! لطفاً Environment Variables را در Render چک کنید.")
+    sys.exit(1)
 
 openai.api_key = OPENAI_API_KEY
 
@@ -83,4 +93,5 @@ web_app = web.Application()
 web_app.add_routes([web.get("/", webhook)])
 
 if __name__ == "__main__":
+    print("🚀 ربات در حال اجراست...")
     web.run_app(web_app, port=int(os.getenv("PORT", 8080)))
