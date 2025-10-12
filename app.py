@@ -6,11 +6,11 @@ import openai
 from aiohttp import web
 import sys
 
-# توکن‌ها از متغیرهای محیطی Render
+# دریافت توکن‌ها از Environment Variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# بررسی اولیه توکن‌ها
+# بررسی اولیه
 if not TELEGRAM_TOKEN:
     print("❌ خطا: TELEGAM_TOKEN تعریف نشده! لطفاً Environment Variables را در Render چک کنید.")
     sys.exit(1)
@@ -21,7 +21,7 @@ if not OPENAI_API_KEY:
 
 openai.api_key = OPENAI_API_KEY
 
-# پاسخ صوتی
+# ساخت فایل صوتی با gTTS
 async def generate_voice(text, filename="voice.mp3"):
     tts = gTTS(text=text, lang='fa')
     tts.save(filename)
@@ -60,7 +60,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(text)
     await query.message.reply_voice(voice=open(voice_file, "rb"))
 
-# واکنش به سوالات آزاد کاربران
+# پاسخ به پیام‌های آزاد کاربران
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     try:
@@ -75,7 +75,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(answer)
         voice_file = await generate_voice(answer)
         await update.message.reply_voice(voice=open(voice_file, "rb"))
-    except Exception as e:
+    except Exception:
         await update.message.reply_text("خطایی رخ داد، لطفاً دوباره تلاش کن.")
 
 # وب‌سرور برای Render
@@ -84,7 +84,6 @@ async def webhook(request):
 
 # ساخت اپلیکیشن
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
