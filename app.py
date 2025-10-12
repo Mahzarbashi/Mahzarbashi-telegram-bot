@@ -1,38 +1,31 @@
-import os
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-from gtts import gTTS
-import tempfile
+# app.py (debug version) - جایگزین فایل فعلی کن
+import os, sys, traceback
+import telegram
+import pkgutil
 
-# گرفتن توکن از محیط Render
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-if not TELEGRAM_TOKEN:
-    raise ValueError("❌ TELEGRAM_TOKEN تعریف نشده! لطفاً Environment Variables را در Render تنظیم کن.")
+print("=== START DIAGNOSTIC ===")
+print("Python sys.version:", sys.version.replace("\n", " "))
+try:
+    import telegram as tg
+    print("python-telegram-bot package found. module path:", tg.__file__)
+    try:
+        print("telegram.__version__:", getattr(tg, '__version__', 'unknown'))
+    except Exception as e:
+        print("couldn't read telegram.__version__", e)
+except Exception as e:
+    print("python-telegram-bot import error:", e)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام 👋 خوش اومدی به ربات محضرباشی!\nسؤالت رو بنویس تا راهنمایی‌ت کنم.")
+print("ENV TELEGRAM_TOKEN present?:", "TELEGRAM_TOKEN" in os.environ)
+print("TELEGRAM_TOKEN length (masked):", len(os.environ.get("TELEGRAM_TOKEN","")) if "TELEGRAM_TOKEN" in os.environ else "not-set")
+print("ENV OPENAI_API_KEY present?:", "OPENAI_API_KEY" in os.environ)
+print("OPENAI_API_KEY length (masked):", len(os.environ.get("OPENAI_API_KEY","")) if "OPENAI_API_KEY" in os.environ else "not-set")
+print("=== END DIAGNOSTIC ===")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    response_text = f"📘 راهنمایی اولیه درباره: {text}\nبرای مشاوره تخصصی وارد سایت شو 🌐 mahzarbashi.ir"
+# اگر پایتون نسخه‌ی غیر 3.10 است، متوقف شو و لاگ واضح بفرست
+if not sys.version.startswith("3.10"):
+    print("\n❗ Detected Python is not 3.10.x — this will cause the Updater error.")
+    print("Please ensure runtime.txt exists in repo root with: python-3.10.14")
+    sys.exit(1)
 
-    # پاسخ متنی
-    await update.message.reply_text(response_text)
-
-    # پاسخ صوتی
-    tts = gTTS(text=response_text, lang='fa')
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-        tts.save(tmp.name)
-        await update.message.reply_audio(audio=open(tmp.name, 'rb'))
-        os.remove(tmp.name)
-
-def main():
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("🚀 ربات محضرباشی در حال اجراست...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+# اگر همه چیز خوبه، ادامه بد (در این فایل فقط تست می‌کنیم).
+print("Python version is 3.10.x — proceed to real app (you can now replace this file with final app.py).")
