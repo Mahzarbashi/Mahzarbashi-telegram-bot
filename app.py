@@ -37,30 +37,29 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # بررسی متن و پاسخ با GPT
 async def gpt_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text.strip()
-    
-    # اگر متن خیلی تخصصی بود به سایت هدایت شود
-    keywords_special = ["مهریه", "طلاق", "چک", "قرارداد", "سند رسمی", "کلاهبرداری", "ارث"]
-    if any(word in user_text for word in keywords_special):
-        response_text = (
-            "سوال شما کمی تخصصی است ⚖️\n"
-            "می‌توانید پاسخ دقیق و کامل را در سایت محضرباشی بگیرید:\n"
-            "www.mahzarbashi.ir\n\n"
-            "همچنین امکان مشاوره تلفنی با وکیل پایه یک دادگستری هم وجود دارد."
+
+    # Prompt قوی برای GPT
+    system_prompt = (
+        "تو یک مشاور حقوقی هستی. فقط به سوالات حقوقی پاسخ بده. "
+        "اگر سوال تخصصی است، کوتاه جواب بده و کاربر را به سایت محضرباشی هدایت کن. "
+        "پاسخ‌ها دوستانه، واضح و ساده باشد."
+    )
+
+    try:
+        completion = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text}
+            ],
+            temperature=0.7
         )
-    else:
-        # پاسخ GPT
-        try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "تو یک مشاور حقوقی هستی. پاسخ‌ها را دوستانه، ساده و واضح بده و اگر سوال تخصصی بود به سایت ارجاع بده."},
-                    {"role": "user", "content": user_text}
-                ],
-                temperature=0.7
-            )
-            response_text = completion.choices[0].message.content.strip()
-        except Exception as e:
-            response_text = "متاسفم، در حال حاضر پاسخ نمی‌توانم بدهم. لطفاً بعدا دوباره امتحان کنید."
+        response_text = completion.choices[0].message.content.strip()
+    except Exception as e:
+        response_text = (
+            "این سوال خارج از حوزه حقوقی است یا در حال حاضر نمی‌توانم پاسخ بدهم. "
+            "لطفاً سوال حقوقی بپرسید یا به وبسایت محضرباشی مراجعه کنید: www.mahzarbashi.ir"
+        )
 
     # ارسال متن
     await update.message.reply_text(response_text)
