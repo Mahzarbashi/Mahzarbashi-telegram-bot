@@ -1,20 +1,26 @@
 import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import Bot
 from gtts import gTTS
 from io import BytesIO
 import openai
+from flask import Flask, request, Response
 
-# دریافت توکن‌ها از Environment Variables
+# دریافت توکن‌ها و پورت
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+PORT = int(os.environ.get("PORT", 10000))
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")  # URL اصلی Render
 
-if not TELEGRAM_TOKEN:
-    raise ValueError("❌ TELEGRAM_TOKEN پیدا نشد. لطفاً Environment Variables را تنظیم کنید.")
-if not OPENAI_API_KEY:
-    raise ValueError("❌ OPENAI_API_KEY پیدا نشد. لطفاً Environment Variables را تنظیم کنید.")
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not RENDER_EXTERNAL_URL:
+    raise ValueError("❌ لطفاً TELEGRAM_TOKEN، OPENAI_API_KEY و RENDER_EXTERNAL_URL را تنظیم کنید.")
 
 openai.api_key = OPENAI_API_KEY
+
+# Flask app برای webhook
+app = Flask(__name__)
+bot = Bot(token=TELEGRAM_TOKEN)
 
 # دستور start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -34,11 +40,10 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text)
 
-# بررسی متن و پاسخ با GPT
+# پاسخ GPT و صوتی
 async def gpt_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text.strip()
-
-    # Prompt قوی برای GPT
+    
     system_prompt = (
         "تو یک مشاور حقوقی هستی. فقط به سوالات حقوقی پاسخ بده. "
         "اگر سوال تخصصی است، کوتاه جواب بده و کاربر را به سایت محضرباشی هدایت کن. "
@@ -55,7 +60,7 @@ async def gpt_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
             temperature=0.7
         )
         response_text = completion.choices[0].message.content.strip()
-    except Exception as e:
+    except Exception:
         response_text = (
             "این سوال خارج از حوزه حقوقی است یا در حال حاضر نمی‌توانم پاسخ بدهم. "
             "لطفاً سوال حقوقی بپرسید یا به وبسایت محضرباشی مراجعه کنید: www.mahzarbashi.ir"
@@ -71,15 +76,25 @@ async def gpt_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     audio.seek(0)
     await update.message.reply_voice(voice=audio)
 
-# ساخت اپلیکیشن
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+# ساخت اپلیکیشن Telegram
+from telegram.ext import Application
+application = Application.builder().token(TELEGRAM_TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("about", about))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gpt_response))
 
-# هندلرها
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("about", about))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gpt_response))
+# وبهوک Flask
+@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def webhook():
+    data = request.get_json(force=True)
+    update = Update.de_json(data, bot)
+    import asyncio
+    asyncio.run(application.process_update(update))
+    return Response("ok", status=200)
 
-# اجرای ربات
+# اجرای Webhook و ست کردن آن روی تلگرام
 if __name__ == "__main__":
-    print("🚀 Mahzarbashi Bot is running...")
-    app.run_polling()
+    webhook_url = f"{RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}"
+    bot.set_webhook(url=webhook_url)
+    print(f"🚀 Webhook set to {webhook_url}")
+    app.run(host="0.0.0.0", port=PORT)
