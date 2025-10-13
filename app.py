@@ -21,7 +21,7 @@ openai.api_key = OPENAI_API_KEY
 if not TELEGRAM_TOKEN:
     raise ValueError("❌ TELEGRAM_TOKEN تعریف نشده است!")
 
-# 🎤 تابع ساخت پاسخ صوتی
+# 🎤 ساخت پاسخ صوتی
 async def generate_voice(text, filename="voice.mp3"):
     tts = gTTS(text=text, lang='fa')
     tts.save(filename)
@@ -41,12 +41,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
     )
 
-# 🎛️ واکنش به دکمه‌ها
+# 🎛️ دکمه‌ها
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     topic = query.data
+
     if topic == "divorce":
         text = "برای طلاق، نوع طلاق (توافقی یا یک‌طرفه) مهمه. می‌خوای برات توضیح بدم چطور اقدام کنی؟"
     elif topic == "mehrieh":
@@ -60,7 +60,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(text)
     await query.message.reply_voice(voice=open(voice_file, "rb"))
 
-# 💬 واکنش به پیام‌های کاربران
+# 💬 پاسخ به پیام کاربر
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     print(f"📨 کاربر نوشت: {user_text}")
@@ -81,33 +81,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("❌ خطا در ارتباط با OpenAI:", str(e))
         await update.message.reply_text("خطایی رخ داد، لطفاً دوباره تلاش کن.")
 
-# 🧩 ریشه برای تست Render
-async def webhook_root(request):
+# ⚙️ اپ تلگرام
+telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CallbackQueryHandler(button_handler))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+# 🌐 aiohttp web app
+web_app = web.Application()
+
+async def root(request):
     return web.Response(text="Mahzarbashi bot is running ✅")
 
-# 🧪 تست دریافت پیام از تلگرام
-async def debug_webhook(request):
+# 🔗 اتصال تلگرام به aiohttp
+async def telegram_webhook(request):
     try:
         data = await request.json()
-        print("📩 پیام از تلگرام:", json.dumps(data, ensure_ascii=False, indent=2))
-        return web.Response(text="✅ پیام دریافت شد")
+        update = Update.de_json(data, telegram_app.bot)
+        await telegram_app.update_queue.put(update)
+        return web.Response(text="OK")
     except Exception as e:
-        print("❌ خطا در دریافت پیام:", str(e))
-        return web.Response(text="❌ خطا در پردازش پیام")
+        print("❌ خطا در webhook:", e)
+        return web.Response(status=500, text="Error")
 
-# ⚙️ ساخت اپ اصلی تلگرام
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(button_handler))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-# 🌐 ساخت وب‌سرور aiohttp
-web_app = web.Application()
 web_app.add_routes([
-    web.get("/", webhook_root),
-    web.post("/", debug_webhook)
+    web.get("/", root),
+    web.post(f"/{TELEGRAM_TOKEN}", telegram_webhook),
 ])
 
 if __name__ == "__main__":
-    print("🚀 Mahzarbashi bot started successfully on Render ✅")
+    print("🚀 Mahzarbashi bot started successfully ✅")
     web.run_app(web_app, port=int(os.getenv("PORT", 8080)))
