@@ -4,7 +4,7 @@ import time
 import telebot
 from gtts import gTTS
 from io import BytesIO
-from openai import OpenAI
+import openai
 import requests
 from flask import Flask, jsonify
 
@@ -23,8 +23,8 @@ try:
 except Exception:
     pass
 
-# OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Set OpenAI API key (classic way, compatible with all versions)
+openai.api_key = OPENAI_API_KEY
 
 # Simple database for voice preferences
 user_preferences = {}
@@ -88,7 +88,7 @@ def get_legal_answer(question):
         f"سؤال: {question}"
     )
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=500
