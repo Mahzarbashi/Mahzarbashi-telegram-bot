@@ -14,7 +14,7 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# حذف خودکار وبهوک قدیمی
+# Delete any existing webhook automatically
 requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook")
 
 # Set OpenAI API key
