@@ -11,7 +11,6 @@ from flask import Flask
 # -------------------------
 # Initial settings
 # -------------------------
-
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
@@ -39,7 +38,6 @@ user_preferences = {}
 # -------------------------
 # Welcome messages
 # -------------------------
-
 WELCOME_MSG = (
     "سلام 👋 من دستیار حقوقی محضرباشی هستم.\n"
     "می‌تونم درباره‌ی طلاق، ازدواج، ارث، قرارداد، سند و سایر موضوعات حقوقی راهنماییت کنم.\n"
@@ -54,7 +52,6 @@ ABOUT_MSG = (
 # -------------------------
 # Voice selection
 # -------------------------
-
 VOICE_OPTIONS = {"زن": "female", "مرد": "male"}
 
 def ask_voice_selection(chat_id):
@@ -74,7 +71,6 @@ def set_user_voice(message):
 # -------------------------
 # Voice generation
 # -------------------------
-
 def generate_voice(text, voice_gender):
     tts = gTTS(text=text, lang='fa', tld='com')
     audio_bytes = BytesIO()
@@ -85,9 +81,6 @@ def generate_voice(text, voice_gender):
 # -------------------------
 # Legal answers with retry
 # -------------------------
-
-LEGAL_KEYWORDS = ['مهریه', 'طلاق', 'ارث', 'قرارداد', 'سند']
-
 def get_legal_answer(question, retries=3, delay=2):
     prompt = (
         f"شما یک دستیار حقوقی هستید. پاسخ دوستانه و کوتاه به فارسی بده. "
@@ -112,7 +105,6 @@ def get_legal_answer(question, retries=3, delay=2):
 # -------------------------
 # Message handlers
 # -------------------------
-
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     chat_id = message.chat.id
@@ -150,7 +142,6 @@ def handle_all_messages(message):
 # -------------------------
 # Run bot in background thread (polling)
 # -------------------------
-
 def start_telebot_polling():
     print("Starting telebot polling thread...")
     while True:
@@ -166,7 +157,6 @@ polling_thread.start()
 # -------------------------
 # Minimal Flask app to bind PORT for Render
 # -------------------------
-
 app = Flask(__name__)
 
 @app.route("/")
