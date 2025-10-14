@@ -1,96 +1,86 @@
-import os
-import logging
-from flask import Flask, request
-from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from gtts import gTTS
-import openai
-import aiohttp
+import os import telebot from gtts import gTTS from io import BytesIO from openai import OpenAI
 
-# تنظیمات پایه
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL")
+-------------------------
 
-openai.api_key = OPENAI_API_KEY
+تنظیمات اولیه
 
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
+-------------------------
 
-# ساخت اپلیکیشن تلگرام
-application = Application.builder().token(TELEGRAM_TOKEN).build()
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN') OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "سلام 👋 من دستیار حقوقی محضرباشی هستم. هر سوالی درباره‌ی امور حقوقی داری بپرس."
-    )
+bot = telebot.TeleBot(TELEGRAM_TOKEN) client = OpenAI(api_key=OPENAI_API_KEY)
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
+دیتابیس ساده برای انتخاب صدا و ذخیره کاربرها
 
-    # بررسی اینکه سوال حقوقی هست یا نه
-    keywords = ["مهریه", "طلاق", "سند", "شکایت", "دادگاه", "وکالت", "نفقه", "قرارداد", "اجاره"]
-    if not any(k in user_text for k in keywords):
-        await update.message.reply_text(
-            "من فقط به سوالات حقوقی پاسخ می‌دهم ⚖️ لطفاً سؤال خود را در زمینه‌ی حقوق بپرس."
-        )
-        return
+user_preferences = {}
 
-    try:
-        # درخواست به GPT
-        response = await openai.ChatCompletion.acreate(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "شما یک مشاور حقوقی فارسی هستید. پاسخ‌ها را کوتاه، دقیق و قابل فهم بده."},
-                {"role": "user", "content": user_text}
-            ],
-            max_tokens=350,
-        )
+-------------------------
 
-        answer = response.choices[0].message.content.strip()
+پیام خوش آمد
 
-        # اگر سوال خیلی تخصصی بود → هدایت به سایت
-        if "نمیتوانم" in answer or len(answer) < 15:
-            answer = (
-                "سؤال شما کمی تخصصی است ⚖️\n"
-                "می‌توانید پاسخ دقیق و کامل را در سایت محضرباشی بخوانید:\n"
-                "https://www.mahzarbashi.ir\n"
-                "یا از مشاوره تلفنی با وکیل پایه یک استفاده کنید."
-            )
+-------------------------
 
-        # پاسخ متنی
-        await update.message.reply_text(answer)
+WELCOME_MSG = ( "سلام 👋 من دستیار حقوقی محضرباشی هستم.\n" "می‌تونم درباره‌ی طلاق، ازدواج، ارث، قرارداد، سند و سایر موضوعات حقوقی راهنماییت کنم.\n" "برای مشاوره تخصصی هم می‌تونی به سایت www.mahzarbashi.ir سر بزنی." )
 
-        # پاسخ صوتی
-        tts = gTTS(answer, lang='fa')
-        tts.save("reply.mp3")
-        await update.message.reply_voice(voice=open("reply.mp3", "rb"))
+ABOUT_MSG = ( "توسعه‌دهنده: نسترن بنی‌طبا\n" "دستیار حقوقی هوشمند، پاسخگو به سؤالات حقوقی عمومی، همراه با پاسخ صوتی" )
 
-    except Exception as e:
-        logging.error(f"Error: {e}")
-        await update.message.reply_text("متاسفم، مشکلی در پردازش سؤال پیش آمد. لطفاً دوباره تلاش کنید.")
+-------------------------
 
-# هندلرها
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+انتخاب صدا
 
-# Flask route برای webhook
-@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
-    return "ok", 200
+-------------------------
 
-@app.route("/")
-def index():
-    return "🤖 Mahzarbashi Legal Assistant Bot is running."
+VOICE_OPTIONS = {"زن": "female", "مرد": "male"}
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=TELEGRAM_TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
-    )
-    app.run(host="0.0.0.0", port=port)
+def ask_voice_selection(chat_id): msg = bot.send_message(chat_id, "لطفاً صدای پاسخ‌هایت را انتخاب کن:\nزن یا مرد") bot.register_next_step_handler(msg, set_user_voice)
+
+def set_user_voice(message): chat_id = message.chat.id choice = message.text.strip() if choice in VOICE_OPTIONS: user_preferences[chat_id] = VOICE_OPTIONS[choice] bot.send_message(chat_id, f"صدای '{choice}' انتخاب شد. حالا می‌تونی سؤال حقوقی خودت رو بپرسی.") else: bot.send_message(chat_id, "لطفاً فقط 'زن' یا 'مرد' وارد کن.") ask_voice_selection(chat_id)
+
+-------------------------
+
+تولید پاسخ صوتی
+
+-------------------------
+
+def generate_voice(text, voice_gender): tts = gTTS(text=text, lang='fa', tld='com')  # gTTS فقط جنس صدا پیش‌فرض دارد، اینجا پیش‌فرض زن/مرد را مدیریت میکنیم audio_bytes = BytesIO() tts.write_to_fp(audio_bytes) audio_bytes.seek(0) return audio_bytes
+
+-------------------------
+
+پاسخ به سوالات حقوقی
+
+-------------------------
+
+LEGAL_KEYWORDS = ['مهریه','طلاق','ارث','قرارداد','سند']
+
+def get_legal_answer(question): prompt = ( f"شما یک دستیار حقوقی هستید. پاسخ دوستانه و کوتاه به فارسی بده. " f"اگر سؤال تخصصی بود، به سایت محضرباشی: www.mahzarbashi.ir ارجاع بده. \n" f"سؤال: {question}" ) response = client.chat.completions.create( model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}], max_tokens=500 ) return response.choices[0].message.content.strip()
+
+-------------------------
+
+هندلر پیام‌ها
+
+-------------------------
+
+@bot.message_handler(commands=['start']) def handle_start(message): chat_id = message.chat.id bot.send_message(chat_id, WELCOME_MSG) bot.send_message(chat_id, ABOUT_MSG) ask_voice_selection(chat_id)
+
+@bot.message_handler(commands=['about']) def handle_about(message): bot.send_message(message.chat.id, ABOUT_MSG)
+
+@bot.message_handler(func=lambda m: True) def handle_all_messages(message): chat_id = message.chat.id user_text = message.text.strip() voice_gender = user_preferences.get(chat_id, 'female')
+
+# گرفتن پاسخ حقوقی
+answer_text = get_legal_answer(user_text)
+
+# ارسال پاسخ نوشتاری
+bot.send_message(chat_id, answer_text)
+
+# تولید و ارسال صوتی
+audio_bytes = generate_voice(answer_text, voice_gender)
+bot.send_audio(chat_id, audio_bytes, title="پاسخ حقوقی")
+
+-------------------------
+
+اجرای ربات
+
+-------------------------
+
+if name == 'main': print("ربات محضرباشی هوشمند آماده است...") bot.infinity_polling()
+
