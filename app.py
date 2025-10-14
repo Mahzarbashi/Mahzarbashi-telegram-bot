@@ -3,15 +3,19 @@ import telebot
 from gtts import gTTS
 from io import BytesIO
 import openai
+import requests
 
 # -------------------------
 # Initial settings
 # -------------------------
 
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+TELEGRAM_TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"  # توکن شما
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
+# حذف خودکار وبهوک قدیمی
+requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook")
 
 # Set OpenAI API key
 openai.api_key = OPENAI_API_KEY
