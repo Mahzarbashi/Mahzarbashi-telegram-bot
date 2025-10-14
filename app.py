@@ -6,7 +6,7 @@ from gtts import gTTS
 from io import BytesIO
 import openai
 import requests
-from flask import Flask, jsonify
+from flask import Flask
 
 # -------------------------
 # Initial settings
@@ -17,13 +17,17 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# Delete any existing webhook automatically
+# -------------------------
+# Delete existing webhook
+# -------------------------
 try:
-    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook", timeout=5)
-except Exception:
-    pass
+    print("Deleting any existing webhook...")
+    resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook", timeout=5)
+    print("Webhook delete response:", resp.json())
+except Exception as e:
+    print("Error deleting webhook:", e)
 
-# Set OpenAI API key (classic way, compatible with all versions)
+# Set OpenAI API key
 openai.api_key = OPENAI_API_KEY
 
 # Simple database for voice preferences
@@ -119,30 +123,34 @@ def handle_all_messages(message):
     user_text = message.text.strip()
     voice_gender = user_preferences.get(chat_id, 'female')
 
+    print(f"Received message from {chat_id}: {user_text}")
+
     answer_text = get_legal_answer(user_text)
     
     # Send text reply
     try:
         bot.send_message(chat_id, answer_text)
-    except Exception:
-        pass
+    except Exception as e:
+        print("Error sending text message:", e)
 
     # Generate and send voice reply
     try:
         audio_bytes = generate_voice(answer_text, voice_gender)
         bot.send_audio(chat_id, audio_bytes, title="پاسخ حقوقی")
-    except Exception:
-        pass
+    except Exception as e:
+        print("Error sending audio:", e)
 
 # -------------------------
 # Run bot in background thread (polling)
 # -------------------------
 
 def start_telebot_polling():
+    print("Starting telebot polling thread...")
     while True:
         try:
             bot.infinity_polling(timeout=60, long_polling_timeout=60)
-        except Exception:
+        except Exception as e:
+            print("Polling exception:", e)
             time.sleep(3)
 
 polling_thread = threading.Thread(target=start_telebot_polling, daemon=True)
@@ -164,4 +172,5 @@ def health():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
+    print(f"Starting Flask app on port {port}...")
     app.run(host="0.0.0.0", port=port)
