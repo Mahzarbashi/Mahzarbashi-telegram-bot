@@ -4,7 +4,7 @@ import time
 import telebot
 from gtts import gTTS
 from io import BytesIO
-import openai
+from openai import OpenAI
 import requests
 from flask import Flask, jsonify
 
@@ -12,20 +12,19 @@ from flask import Flask, jsonify
 # Initial settings
 # -------------------------
 
-# اگر نمی‌خوای توکن داخل کد باشه، می‌تونی از env استفاده کنی:
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# Delete any existing webhook automatically (safe: ignore failures)
+# Delete any existing webhook automatically
 try:
     requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook", timeout=5)
 except Exception:
     pass
 
-# Set OpenAI API key (for openai package)
-openai.api_key = OPENAI_API_KEY
+# OpenAI client
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Simple database for voice preferences
 user_preferences = {}
@@ -70,7 +69,6 @@ def set_user_voice(message):
 # -------------------------
 
 def generate_voice(text, voice_gender):
-    # gTTS خودش جنس صدا را تنظیم نمی‌کند؛ این آرگومان برای آینده/منطق داخلی نگه داشته شده
     tts = gTTS(text=text, lang='fa', tld='com')
     audio_bytes = BytesIO()
     tts.write_to_fp(audio_bytes)
@@ -89,18 +87,16 @@ def get_legal_answer(question):
         f"اگر سؤال تخصصی بود، به سایت محضرباشی: www.mahzarbashi.ir ارجاع بده.\n"
         f"سؤال: {question}"
     )
-    # استفاده از API کلاسیک openai
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=500
-    )
-    # سازگاری با ساختار پاسخ
     try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500
+        )
         return response.choices[0].message.content.strip()
-    except Exception:
-        # fallback برای نسخه‌های قدیمی‌تر
-        return response.choices[0].text.strip()
+    except Exception as e:
+        print("OpenAI error:", e)
+        return "متأسفم، خطایی در دریافت پاسخ رخ داد. لطفاً دوباره تلاش کن."
 
 # -------------------------
 # Message handlers
@@ -123,11 +119,7 @@ def handle_all_messages(message):
     user_text = message.text.strip()
     voice_gender = user_preferences.get(chat_id, 'female')
 
-    # Get legal answer
-    try:
-        answer_text = get_legal_answer(user_text)
-    except Exception as e:
-        answer_text = "متأسفم، خطایی در دریافت پاسخ رخ داد. لطفاً دوباره تلاش کن."
+    answer_text = get_legal_answer(user_text)
     
     # Send text reply
     try:
@@ -147,14 +139,12 @@ def handle_all_messages(message):
 # -------------------------
 
 def start_telebot_polling():
-    # small backoff loop to avoid tight crash loops
     while True:
         try:
             bot.infinity_polling(timeout=60, long_polling_timeout=60)
         except Exception:
             time.sleep(3)
 
-# Start polling in a separate daemon thread
 polling_thread = threading.Thread(target=start_telebot_polling, daemon=True)
 polling_thread.start()
 
@@ -166,15 +156,12 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return jsonify({"status": "ok", "bot": "mahzarbashi", "pid": os.getpid()})
+    return {"status": "ok", "bot": "mahzarbashi"}
 
-# Health endpoint for readiness
 @app.route("/health")
 def health():
-    return jsonify({"status": "healthy"})
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
-    # Render provides PORT env var — use it, یا fallback به 10000
     port = int(os.environ.get("PORT", 10000))
-    # Run Flask app (this binds the process to the port so Render is happy)
     app.run(host="0.0.0.0", port=port)
