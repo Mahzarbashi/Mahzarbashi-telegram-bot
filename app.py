@@ -12,8 +12,11 @@ from flask import Flask
 # Initial settings
 # -------------------------
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    raise Exception("TELEGRAM_TOKEN یا OPENAI_API_KEY در Environment Variables ست نشده است!")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -80,27 +83,31 @@ def generate_voice(text, voice_gender):
     return audio_bytes
 
 # -------------------------
-# Legal answers
+# Legal answers with retry
 # -------------------------
 
 LEGAL_KEYWORDS = ['مهریه', 'طلاق', 'ارث', 'قرارداد', 'سند']
 
-def get_legal_answer(question):
+def get_legal_answer(question, retries=3, delay=2):
     prompt = (
         f"شما یک دستیار حقوقی هستید. پاسخ دوستانه و کوتاه به فارسی بده. "
         f"اگر سؤال تخصصی بود، به سایت محضرباشی: www.mahzarbashi.ir ارجاع بده.\n"
         f"سؤال: {question}"
     )
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=500
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print("OpenAI error:", e)
-        return "متأسفم، خطایی در دریافت پاسخ رخ داد. لطفاً دوباره تلاش کن."
+    for attempt in range(1, retries + 1):
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"OpenAI error attempt {attempt}: {e}")
+            if attempt < retries:
+                time.sleep(delay)
+            else:
+                return "متأسفم، خطایی در دریافت پاسخ رخ داد. لطفاً دوباره تلاش کن."
 
 # -------------------------
 # Message handlers
