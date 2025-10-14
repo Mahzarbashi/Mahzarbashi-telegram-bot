@@ -2,7 +2,7 @@ import os
 import telebot
 from gtts import gTTS
 from io import BytesIO
-from openai import OpenAI
+import openai
 
 # -------------------------
 # Initial settings
@@ -12,7 +12,9 @@ TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Set OpenAI API key
+openai.api_key = OPENAI_API_KEY
 
 # Simple database for voice preferences
 user_preferences = {}
@@ -75,7 +77,7 @@ def get_legal_answer(question):
         f"اگر سؤال تخصصی بود، به سایت محضرباشی: www.mahzarbashi.ir ارجاع بده.\n"
         f"سؤال: {question}"
     )
-    response = client.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=500
