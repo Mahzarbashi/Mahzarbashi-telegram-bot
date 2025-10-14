@@ -1,15 +1,15 @@
 import os
 import threading
 import time
+from io import BytesIO
+
 import telebot
 from gtts import gTTS
-from io import BytesIO
-import openai
-import requests
 from flask import Flask
+from openai import OpenAI
 
 # -------------------------
-# Initial settings
+# Environment Variables
 # -------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -17,35 +17,36 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     raise Exception("TELEGRAM_TOKEN یا OPENAI_API_KEY در Environment Variables ست نشده است!")
 
+# -------------------------
+# Initialize clients
+# -------------------------
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # -------------------------
-# Delete existing webhook
+# Delete existing webhook to avoid 409
 # -------------------------
 try:
-    print("Deleting any existing webhook...")
+    import requests
     resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook", timeout=5)
     print("Webhook delete response:", resp.json())
 except Exception as e:
     print("Error deleting webhook:", e)
 
-# Set OpenAI API key (version 0.28.0)
-openai.api_key = OPENAI_API_KEY
-
 # -------------------------
-# Simple database for voice preferences
+# User preferences for voice
 # -------------------------
 user_preferences = {}
+VOICE_OPTIONS = {"زن": "female", "مرد": "male"}
 
 # -------------------------
-# Welcome messages
+# Welcome & about messages
 # -------------------------
 WELCOME_MSG = (
     "سلام 👋 من دستیار حقوقی محضرباشی هستم.\n"
     "می‌تونم درباره‌ی طلاق، ازدواج، ارث، قرارداد، سند و سایر موضوعات حقوقی راهنماییت کنم.\n"
     "برای مشاوره تخصصی هم می‌تونی به سایت www.mahzarbashi.ir سر بزنی."
 )
-
 ABOUT_MSG = (
     "توسعه‌دهنده: نسترن بنی‌طبا\n"
     "دستیار حقوقی هوشمند، پاسخگو به سؤالات حقوقی عمومی، همراه با پاسخ صوتی"
@@ -54,8 +55,6 @@ ABOUT_MSG = (
 # -------------------------
 # Voice selection
 # -------------------------
-VOICE_OPTIONS = {"زن": "female", "مرد": "male"}
-
 def ask_voice_selection(chat_id):
     msg = bot.send_message(chat_id, "لطفاً صدای پاسخ‌هایت را انتخاب کن:\nزن یا مرد")
     bot.register_next_step_handler(msg, set_user_voice)
@@ -81,7 +80,7 @@ def generate_voice(text, voice_gender):
     return audio_bytes
 
 # -------------------------
-# Legal answers with retry
+# Legal answer
 # -------------------------
 def get_legal_answer(question, retries=3, delay=2):
     prompt = (
@@ -91,7 +90,7 @@ def get_legal_answer(question, retries=3, delay=2):
     )
     for attempt in range(1, retries + 1):
         try:
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=500
@@ -105,7 +104,7 @@ def get_legal_answer(question, retries=3, delay=2):
                 return "متأسفم، خطایی در دریافت پاسخ رخ داد. لطفاً دوباره تلاش کن."
 
 # -------------------------
-# Message handlers
+# Telegram handlers
 # -------------------------
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -127,14 +126,12 @@ def handle_all_messages(message):
     print(f"Received message from {chat_id}: {user_text}")
 
     answer_text = get_legal_answer(user_text)
-    
-    # Send text reply
+
     try:
         bot.send_message(chat_id, answer_text)
     except Exception as e:
         print("Error sending text message:", e)
 
-    # Generate and send voice reply
     try:
         audio_bytes = generate_voice(answer_text, voice_gender)
         bot.send_audio(chat_id, audio_bytes, title="پاسخ حقوقی")
@@ -142,7 +139,7 @@ def handle_all_messages(message):
         print("Error sending audio:", e)
 
 # -------------------------
-# Run bot in background thread (polling)
+# Polling thread
 # -------------------------
 def start_telebot_polling():
     print("Starting telebot polling thread...")
@@ -153,12 +150,12 @@ def start_telebot_polling():
             print("Polling exception:", e)
             time.sleep(3)
 
-polling_thread = threading.Thread(target=start_telebot_polling, daemon=True)
-polling_thread.start()
+threading.Thread(target=start_telebot_polling, daemon=True).start()
 
 # -------------------------
-# Minimal Flask app to bind PORT for Render
+# Flask app to bind PORT on Render
 # -------------------------
+from flask import Flask
 app = Flask(__name__)
 
 @app.route("/")
