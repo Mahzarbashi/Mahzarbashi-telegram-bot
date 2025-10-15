@@ -1,37 +1,36 @@
 import os
 import telebot
 from flask import Flask, request
-from openai import OpenAI
+import openai
 from gtts import gTTS
 import tempfile
 
-# متغیرهای محیطی
+# ---------------------- تنظیمات اولیه ----------------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
+openai.api_key = OPENAI_API_KEY
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-client = OpenAI(api_key=OPENAI_API_KEY)
-
 app = Flask(__name__)
 
-# پاسخ متنی از ChatGPT
+# ---------------------- پاسخ ChatGPT ----------------------
 def get_gpt_response(prompt):
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "تو یک دستیار حقوقی دوستانه هستی که درباره قوانین ایران پاسخ می‌دهد."},
+                {"role": "system", "content": "تو یک دستیار حقوقی دوستانه و دقیق هستی که به پرسش‌های کاربران درباره قوانین ایران پاسخ می‌دهد."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=600,
+            max_tokens=500,
             temperature=0.7
         )
-        return response.choices[0].message.content.strip()
+        return response["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        print(f"❌ خطا در GPT: {e}")
+        print("❌ خطا در OpenAI:", e)
         return "متأسفم، خطایی در دریافت پاسخ رخ داد. لطفاً دوباره تلاش کن."
 
-# تولید صدا از متن
+# ---------------------- تبدیل متن به صدا ----------------------
 def text_to_voice(text):
     try:
         tts = gTTS(text=text, lang='fa')
@@ -39,35 +38,35 @@ def text_to_voice(text):
         tts.save(temp_file.name)
         return temp_file.name
     except Exception as e:
-        print(f"❌ خطا در تبدیل صدا: {e}")
+        print("❌ خطا در تولید صدا:", e)
         return None
 
-# پاسخ به پیام‌های متنی
-@bot.message_handler(func=lambda message: True)
+# ---------------------- پاسخ‌دهی به پیام‌ها ----------------------
+@bot.message_handler(func=lambda m: True)
 def handle_message(message):
-    user_input = message.text
-    reply_text = get_gpt_response(user_input)
-    bot.reply_to(message, reply_text)
+    user_text = message.text
+    reply = get_gpt_response(user_text)
+    bot.reply_to(message, reply)
 
-    # ارسال صوت
-    voice_file = text_to_voice(reply_text)
-    if voice_file:
-        with open(voice_file, 'rb') as audio:
+    # ارسال فایل صوتی
+    voice_path = text_to_voice(reply)
+    if voice_path:
+        with open(voice_path, "rb") as audio:
             bot.send_voice(message.chat.id, audio)
-        os.remove(voice_file)
+        os.remove(voice_path)
 
-# مسیر وبهوک
+# ---------------------- مسیرهای Flask ----------------------
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    update = request.get_data().decode("utf-8")
+    update = request.stream.read().decode("utf-8")
     bot.process_new_updates([telebot.types.Update.de_json(update)])
     return "OK", 200
 
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ Mahzarbashi Bot is running."
+    return "✅ Mahzarbashi Bot is running successfully!", 200
 
-# اجرای برنامه
+# ---------------------- اجرای نهایی ----------------------
 if __name__ == "__main__":
     bot.remove_webhook()
     render_url = os.getenv("RENDER_EXTERNAL_URL")
