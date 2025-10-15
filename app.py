@@ -7,7 +7,7 @@ import tempfile
 
 # ---------------------- تنظیمات اولیه ----------------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"
 
 openai.api_key = OPENAI_API_KEY
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
@@ -48,28 +48,28 @@ def handle_message(message):
     reply = get_gpt_response(user_text)
     bot.reply_to(message, reply)
 
-    # ارسال فایل صوتی
     voice_path = text_to_voice(reply)
     if voice_path:
         with open(voice_path, "rb") as audio:
             bot.send_voice(message.chat.id, audio)
         os.remove(voice_path)
 
-# ---------------------- مسیرهای Flask ----------------------
+# ---------------------- مسیر Webhook ----------------------
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    update = request.stream.read().decode("utf-8")
-    bot.process_new_updates([telebot.types.Update.de_json(update)])
+    json_update = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_update)
+    bot.process_new_updates([update])
     return "OK", 200
 
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ Mahzarbashi Bot is running successfully!", 200
+    return "✅ Bot is alive", 200
 
-# ---------------------- اجرای نهایی ----------------------
 if __name__ == "__main__":
+    # حذف وبهوک قبلی
     bot.remove_webhook()
-    render_url = os.getenv("RENDER_EXTERNAL_URL")
-    if render_url:
-        bot.set_webhook(url=f"{render_url}/{TELEGRAM_TOKEN}")
-    app.run(host="0.0.0.0", port=10000)
+    # ست کردن وبهوک به آدرس پروژه‌ی شما
+    bot.set_webhook(url=f"https://mahzarbashi-telegram-bot-3-mmjb.onrender.com/{TELEGRAM_TOKEN}")
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
