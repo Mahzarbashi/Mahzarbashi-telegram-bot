@@ -74,3 +74,23 @@ if __name__ == "__main__":
         bot.set_webhook(url=f"{render_url}/{TELEGRAM_TOKEN}")
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+    from flask import Flask, request
+import openai, os
+
+app = Flask(__name__)
+
+@app.route("/test_openai")
+def test_openai():
+    try:
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        if not openai.api_key:
+            return "❌ OPENAI_API_KEY not found in environment."
+
+        # یک تست کوتاه برای بررسی اتصال
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "سلام"}]
+        )
+        return "✅ OpenAI connection successful!"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
