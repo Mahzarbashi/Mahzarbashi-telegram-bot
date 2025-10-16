@@ -1,92 +1,33 @@
 import os
 import telebot
-from flask import Flask, request
 import openai
+from flask import Flask, request, jsonify
 from gtts import gTTS
-import tempfile
 
-# ---------------------- تنظیمات ----------------------
+# ==========================
+# تنظیم کلیدها از Environment Variables
+# ==========================
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TELEGRAM_TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"
 
-openai.api_key = OPENAI_API_KEY
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    raise ValueError("❌ TELEGRAM_TOKEN یا OPENAI_API_KEY یافت نشد. لطفاً در Render تنظیم شوند.")
+
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
+openai.api_key = OPENAI_API_KEY
+
+# ==========================
+# Flask App
+# ==========================
 app = Flask(__name__)
 
-# ---------------------- پاسخ OpenAI ----------------------
-def get_gpt_response(prompt):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "تو یک دستیار حقوقی دوستانه و دقیق هستی که به پرسش‌های کاربران درباره قوانین ایران پاسخ می‌دهی."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=500,
-            temperature=0.7
-        )
-        return response["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print("❌ خطا در OpenAI:", e)
-        return "متأسفم، خطایی در دریافت پاسخ رخ داد. لطفاً دوباره تلاش کن."
-
-# ---------------------- تبدیل متن به صدا ----------------------
-def text_to_voice(text):
-    try:
-        tts = gTTS(text=text, lang='fa')
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        tts.save(temp_file.name)
-        return temp_file.name
-    except Exception as e:
-        print("❌ خطا در تولید صدا:", e)
-        return None
-
-# ---------------------- پاسخ به پیام‌ها ----------------------
-@bot.message_handler(func=lambda m: True)
-def handle_message(message):
-    user_text = message.text
-    reply = get_gpt_response(user_text)
-    bot.reply_to(message, reply)
-
-    voice_path = text_to_voice(reply)
-    if voice_path:
-        with open(voice_path, "rb") as audio:
-            bot.send_voice(message.chat.id, audio)
-        os.remove(voice_path)
-
-# ---------------------- مسیر وب‌هوک ----------------------
-@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    json_update = request.get_data().decode("utf-8")
-    update = telebot.types.Update.de_json(json_update)
-    bot.process_new_updates([update])
-    return "OK", 200
-
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
-    return "✅ Mahzarbashi Bot is live!", 200
-
-# ---------------------- اجرای نهایی ----------------------
-if __name__ == "__main__":
-    bot.remove_webhook()  # حذف وب‌هوک قدیمی
-    render_url = os.getenv("RENDER_EXTERNAL_URL")
-    if render_url:
-        bot.set_webhook(url=f"{render_url}/{TELEGRAM_TOKEN}")
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-    from flask import Flask, request
-import openai, os
-
-app = Flask(__name__)
+    return "✅ Mahzarbashi Assistant Bot is running successfully!"
 
 @app.route("/test_openai")
 def test_openai():
     try:
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        if not openai.api_key:
-            return "❌ OPENAI_API_KEY not found in environment."
-
-        # یک تست کوتاه برای بررسی اتصال
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "سلام"}]
@@ -94,3 +35,59 @@ def test_openai():
         return "✅ OpenAI connection successful!"
     except Exception as e:
         return f"❌ Error: {str(e)}"
+
+# ==========================
+# Webhook endpoint برای Telegram
+# ==========================
+@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def telegram_webhook():
+    json_update = request.get_json(force=True)
+    update = telebot.types.Update.de_json(json_update)
+    bot.process_new_updates([update])
+    return "ok", 200
+
+# ==========================
+# هندلر پیام‌ها
+# ==========================
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(
+        message,
+        "سلام 👋\nمن دستیار حقوقی محضرباشی هستم.\nبرای شروع فقط کافیه سوالت رو تایپ کنی تا پاسخ نوشتاری و صوتی بگیری 💬🎧"
+    )
+
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    try:
+        user_text = message.text.strip()
+
+        # درخواست به OpenAI
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "تو یک مشاور حقوقی با لحن دوستانه و مطمئن هستی."},
+                {"role": "user", "content": user_text}
+            ]
+        )
+
+        reply_text = response.choices[0].message['content']
+
+        # ارسال پاسخ متنی
+        bot.reply_to(message, reply_text)
+
+        # تولید پاسخ صوتی
+        tts = gTTS(reply_text, lang='fa')
+        audio_file = f"reply_{message.chat.id}.mp3"
+        tts.save(audio_file)
+        with open(audio_file, "rb") as audio:
+            bot.send_audio(message.chat.id, audio)
+        os.remove(audio_file)
+
+    except Exception as e:
+        bot.reply_to(message, f"متأسفم، خطایی رخ داد:\n{str(e)}")
+
+# ==========================
+# اجرای سرور Flask
+# ==========================
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
