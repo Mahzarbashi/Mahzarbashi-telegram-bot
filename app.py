@@ -1,4 +1,3 @@
-# app.py
 import os
 import time
 import tempfile
@@ -7,10 +6,12 @@ import telebot
 from flask import Flask, request, jsonify
 from gtts import gTTS
 
-# ---------- Config (read from env) ----------
+# ----------------------------
+# Config (set these in Vercel env)
+# ----------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-PROJECT_URL = os.getenv("PROJECT_URL")  # optional
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")   # حتماً این را در Vercel بگذار
+PROJECT_URL = os.getenv("PROJECT_URL")     # optional, for webhook auto-set
 PORT = int(os.getenv("PORT", 10000))
 
 if not TELEGRAM_TOKEN:
@@ -21,10 +22,13 @@ if not GROQ_API_KEY:
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
 
-# Groq OpenAI-compatible endpoint (HTTP)
+# Groq OpenAI-compatible endpoint
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = os.getenv("GROQ_MODEL", "compound-beta")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "compound-beta")  # یا مدل مجاز در پنل شما
 
+# ----------------------------
+# Call Groq (via requests) with retries
+# ----------------------------
 def groq_chat_completion(messages, max_tokens=512, temperature=0.7, retries=3, delay=1):
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -41,14 +45,14 @@ def groq_chat_completion(messages, max_tokens=512, temperature=0.7, retries=3, d
             resp = requests.post(GROQ_CHAT_URL, headers=headers, json=payload, timeout=30)
             if resp.status_code == 200:
                 data = resp.json()
+                # سازگاری با OpenAI-compatible response
                 if "choices" in data and len(data["choices"]) > 0:
-                    # typical OpenAI-compatible shape: choices[0].message.content
                     content = data["choices"][0].get("message", {}).get("content")
                     if content is None:
                         content = data["choices"][0].get("text")
                     return (content or "").strip()
                 if data.get("text"):
-                    return data.get("text").strip()
+                    return data["text"].strip()
                 raise Exception(f"Unexpected Groq response shape: {data}")
             else:
                 raise Exception(f"Groq API error: {resp.status_code} - {resp.text}")
@@ -59,6 +63,9 @@ def groq_chat_completion(messages, max_tokens=512, temperature=0.7, retries=3, d
             else:
                 raise
 
+# ----------------------------
+# TTS
+# ----------------------------
 def text_to_speech_fa(text):
     try:
         tts = gTTS(text=text, lang="fa")
@@ -69,7 +76,9 @@ def text_to_speech_fa(text):
         print("TTS error:", e)
         return None
 
-# ---------- Health / Test ----------
+# ----------------------------
+# Health + test endpoint
+# ----------------------------
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"status": "ok", "bot": "mahzarbashi"}), 200
@@ -77,13 +86,15 @@ def home():
 @app.route("/test_groq", methods=["GET"])
 def test_groq():
     try:
-        messages = [{"role": "user", "content": "سلام، یک تست اتصال است."}]
+        messages = [{"role": "user", "content": "سلام! این یک تست اتصال به Groq است."}]
         out = groq_chat_completion(messages, max_tokens=64)
         return jsonify({"ok": True, "reply": out}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
-# ---------- Telegram webhook ----------
+# ----------------------------
+# Telegram webhook receiver
+# ----------------------------
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def telegram_webhook():
     try:
@@ -94,19 +105,25 @@ def telegram_webhook():
         print("Webhook processing error:", e)
     return "", 200
 
-# ---------- Telegram handlers ----------
+# ----------------------------
+# Telegram handlers
+# ----------------------------
 @bot.message_handler(commands=["start"])
 def handle_start(msg):
-    bot.send_message(msg.chat.id, "سلام 👋 من دستیار حقوقی هستم. سوالتو بپرس — متن و فایل صوتی جواب میدم.")
+    welcome = (
+        "سلام 👋 من دستیار حقوقی محضرباشی هستم.\n"
+        "سوالت رو بپرس؛ پاسخ هم متنی و هم صوتی می‌دهم."
+    )
+    bot.send_message(msg.chat.id, welcome)
 
 @bot.message_handler(func=lambda m: True)
-def handle_message(message):
+def handle_all_messages(message):
     user_text = message.text or ""
     chat_id = message.chat.id
-    print(f"[telegram] from {chat_id}: {user_text}")
+    print(f"[telegram] received from {chat_id}: {user_text}")
 
     messages = [
-        {"role": "system", "content": "تو یک دستیار حقوقی دوستانه و دقیق به زبان فارسی هستی."},
+        {"role": "system", "content": "تو یک دستیار حقوقی دوستانه و مختصر به زبان فارسی هستی."},
         {"role": "user", "content": user_text}
     ]
 
@@ -116,11 +133,13 @@ def handle_message(message):
         print("[telegram] groq error:", e)
         reply_text = "متأسفم، خطایی در دریافت پاسخ رخ داد. لطفاً دوباره تلاش کن."
 
+    # send text
     try:
         bot.send_message(chat_id, reply_text)
     except Exception as e:
         print("[telegram] send_message error:", e)
 
+    # send voice
     try:
         voice_path = text_to_speech_fa(reply_text)
         if voice_path:
@@ -130,7 +149,9 @@ def handle_message(message):
     except Exception as e:
         print("[telegram] send_voice error:", e)
 
-# ---------- set webhook on start (best-effort) ----------
+# ----------------------------
+# set webhook if possible (Vercel)
+# ----------------------------
 def set_webhook_if_needed():
     try:
         bot.remove_webhook()
@@ -140,13 +161,20 @@ def set_webhook_if_needed():
         if PROJECT_URL:
             full_url = PROJECT_URL.rstrip("/") + f"/{TELEGRAM_TOKEN}"
             print("Setting webhook to:", full_url)
-            res = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook", json={"url": full_url}, timeout=15)
+            res = requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
+                json={"url": full_url},
+                timeout=15,
+            )
             print("setWebhook response:", res.status_code, res.text)
         else:
             print("PROJECT_URL not set; webhook not configured automatically.")
     except Exception as e:
         print("Error setting webhook:", e)
 
+# ----------------------------
+# start
+# ----------------------------
 if __name__ == "__main__":
     set_webhook_if_needed()
     print(f"Starting Flask on 0.0.0.0:{PORT}")
