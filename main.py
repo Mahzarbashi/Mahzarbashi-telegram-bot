@@ -4,8 +4,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 from gtts import gTTS
 from io import BytesIO
 
-# توکن ربات
-TELEGRAM_TOKEN = "YOUR_TELEGRAM_TOKEN"
+# توکن واقعی ربات
+TELEGRAM_TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"
 
 # پاسخ به دستور /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,7 +56,6 @@ async def send_text_and_audio(update_or_query, text):
 # پاسخ به پیام‌های متنی کاربر
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
-    # اینجا می‌توانی هوش مصنوعی یا بانک سوالات حقوقی را وصل کنی
     if "مهریه" in user_text:
         response = "مهریه طبق قانون مدنی محاسبه می‌شود. برای جزئیات بیشتر به سایت محضرباشی مراجعه کنید."
     else:
