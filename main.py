@@ -1,6 +1,4 @@
-import os
 import threading
-import json
 from io import BytesIO
 from gtts import gTTS
 from flask import Flask
@@ -24,12 +22,17 @@ def run_flask():
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
 
-# === مسیر مطلق برای فایل legal_bank.json ===
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(BASE_DIR, "legal_bank.json")
-
-with open(file_path, "r", encoding="utf-8") as f:
-    LEGAL_BANK = json.load(f)
+# === بانک حقوقی داخلی ===
+LEGAL_BANK = {
+    "مدنی": {
+        "1078": "مهریه طبق قانون مدنی محاسبه می‌شود. جزئیات بیشتر در سایت محضرباشی.",
+        "1082": "فسخ قرارداد طبق ماده 1082 قانون مدنی انجام می‌شود. جزئیات در سایت محضرباشی."
+    },
+    "جزا": {
+        "1": "مجازات‌ها و دیه طبق ماده 1 قانون مجازات اسلامی است.",
+        "2": "دیه و قصاص طبق ماده 2 قانون مجازات اسلامی تعیین می‌شود."
+    }
+}
 
 # === دسته‌بندی‌های اصلی ===
 CATEGORIES = list(LEGAL_BANK.keys())
