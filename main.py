@@ -1,5 +1,6 @@
 import os
 import threading
+import json
 from io import BytesIO
 from gtts import gTTS
 from flask import Flask
@@ -12,7 +13,7 @@ from telegram.ext import (
 # === توکن ربات ===
 TELEGRAM_TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"
 
-# === Flask برای health endpoint ===
+# === Flask health endpoint ===
 flask_app = Flask("health")
 
 @flask_app.route("/")
@@ -23,45 +24,22 @@ def run_flask():
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
 
-# === بانک حقوقی نمونه ===
-LEGAL_FAQ = {
-    "مهریه": {
-        "سوالات": [
-            "مهریه چگونه محاسبه می‌شود؟",
-            "شرایط پرداخت مهریه چیست؟"
-        ],
-        "پاسخ‌ها": [
-            "مهریه طبق قانون مدنی محاسبه می‌شود. برای جزئیات بیشتر به سایت محضرباشی مراجعه کنید.",
-            "مهریه می‌تواند نقدی یا غیرنقدی باشد، و زمان و نحوه پرداخت طبق ماده ۱۰۷۸ قانون مدنی مشخص می‌شود."
-        ]
-    },
-    "قراردادها": {
-        "سوالات": ["فسخ قرارداد چگونه انجام می‌شود؟"],
-        "پاسخ‌ها": ["فسخ قرارداد طبق قانون مدنی و شرایط قراردادی انجام می‌شود. برای جزئیات به سایت محضرباشی مراجعه کنید."]
-    },
-    "اجاره": {
-        "سوالات": ["قوانین اجاره مسکن چیست؟"],
-        "پاسخ‌ها": ["قوانین اجاره طبق قانون مدنی و قانون روابط موجر و مستأجر انجام می‌شود. برای جزئیات به سایت محضرباشی مراجعه کنید."]
-    },
-    "جزا": {
-        "سوالات": ["دیه و مجازات‌ها چگونه است؟"],
-        "پاسخ‌ها": ["قوانین جزا طبق قانون مجازات اسلامی است. برای جزئیات به سایت محضرباشی مراجعه کنید."]
-    }
-}
+# === بارگذاری بانک قانونی ===
+with open("legal_bank.json", "r", encoding="utf-8") as f:
+    LEGAL_BANK = json.load(f)
+
+# === دسته‌بندی‌های اصلی ===
+CATEGORIES = ["مدنی", "جزا"]
 
 # === توابع ربات ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("مهریه", callback_data="مهریه")],
-        [InlineKeyboardButton("قراردادها", callback_data="قراردادها")],
-        [InlineKeyboardButton("اجاره", callback_data="اجاره")],
-        [InlineKeyboardButton("جزا", callback_data="جزا")],
-        [InlineKeyboardButton("مشاوره تخصصی", url="https://mahzarbashi.com/consult")]
-    ]
+        [InlineKeyboardButton(cat, callback_data=cat)] for cat in CATEGORIES
+    ] + [[InlineKeyboardButton("مشاوره تخصصی", url="https://mahzarbashi.com/consult")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         "سلام! من دستیار حقوقی محضرباشی هستم ✅\n"
-        "می‌تونی موضوع موردنظر رو از دکمه‌ها انتخاب کنی یا سوال خودت رو بپرسی.\n\n"
+        "می‌توانی موضوع موردنظر را از دکمه‌ها انتخاب کنی یا شماره ماده موردنظر را بپرسی.\n\n"
         "این ربات توسط نسترن بنی‌طبا ساخته شده است.",
         reply_markup=reply_markup
     )
@@ -70,28 +48,27 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     category = query.data
-    if category in LEGAL_FAQ:
-        faq = LEGAL_FAQ[category]
-        text = "📚 سوالات رایج:\n"
-        for i, q in enumerate(faq["سوالات"], 1):
-            text += f"{i}. {q}\n"
-        text += "\nبرای جزئیات می‌توانی روی سوال خودت پیام بدهی یا به سایت محضرباشی مراجعه کن."
+    if category in LEGAL_BANK:
+        text = f"📚 مواد موجود در دسته {category}:\n"
+        for mat in LEGAL_BANK[category]:
+            text += f"- ماده {mat}\n"
+        text += "\nبرای جزئیات می‌توانی شماره ماده را ارسال کنی."
         await send_text_and_audio(query, text)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text or ""
+    user_text = update.message.text.strip()
     found = False
-    # بررسی سوالات پیش‌فرض
-    for category, faq in LEGAL_FAQ.items():
-        for q, a in zip(faq["سوالات"], faq["پاسخ‌ها"]):
-            if q.strip("؟").replace(" ", "") in user_text.replace(" ", ""):
-                await send_text_and_audio(update, a)
-                found = True
-                break
-        if found:
+
+    # بررسی اگر کاربر شماره ماده فرستاده باشد
+    for category, materials in LEGAL_BANK.items():
+        if user_text in materials:
+            answer = materials[user_text]
+            await send_text_and_audio(update, answer)
+            found = True
             break
+
     if not found:
-        # پاسخ عمومی برای سوال جدید
+        # پاسخ عمومی برای سوال جدید یا خارج از بانک
         response = ("سوالت دریافت شد ✅\n"
                     "برای پاسخ تخصصی و جزئیات بیشتر لطفاً به سایت محضرباشی مراجعه کنید:\n"
                     "https://mahzarbashi.com/consult")
@@ -104,7 +81,7 @@ async def send_text_and_audio(update_or_query, text):
     else:
         await update_or_query.edit_message_text(text)
 
-    # تولید TTS
+    # تولید TTS فارسی
     tts = gTTS(text=text, lang='fa')
     audio_fp = BytesIO()
     tts.write_to_fp(audio_fp)
