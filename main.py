@@ -24,12 +24,15 @@ def run_flask():
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
 
-# === بارگذاری بانک قانونی ===
-with open("legal_bank.json", "r", encoding="utf-8") as f:
+# === مسیر مطلق برای فایل legal_bank.json ===
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(BASE_DIR, "legal_bank.json")
+
+with open(file_path, "r", encoding="utf-8") as f:
     LEGAL_BANK = json.load(f)
 
 # === دسته‌بندی‌های اصلی ===
-CATEGORIES = ["مدنی", "جزا"]
+CATEGORIES = list(LEGAL_BANK.keys())
 
 # === توابع ربات ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
