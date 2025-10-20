@@ -1,60 +1,76 @@
 import os
-import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from gtts import gTTS
+from io import BytesIO
 
-# 🔹 متغیر محیطی Groq
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+# توکن ربات
+TELEGRAM_TOKEN = "YOUR_TELEGRAM_TOKEN"
 
-# 🔹 دستور start
+# پاسخ به دستور /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    about_text = (
-        "🤖 خوش‌آمدید به ربات حقوقی محضرباشی!\n\n"
-        "📚 این ربات پاسخگوی سؤالات عمومی حقوقی است.\n"
-        "⚖️ در صورت نیاز به مشاوره تخصصی‌تر، به بخش «مشاوره با وکلای دادگستری» در سایت زیر مراجعه کنید:\n"
-        "🌐 https://mahzarbashi.ir\n\n"
-        "👩‍💼 سازنده: نسترن بنی‌طبا"
+    keyboard = [
+        [InlineKeyboardButton("سوالات حقوقی رایج", callback_data="faq")],
+        [InlineKeyboardButton("مشاوره تخصصی", url="https://mahzarbashi.com/consult")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "سلام! من دستیار حقوقی محضرباشی هستم ✅\n"
+        "می‌تونی از من سوال حقوقی بپرسی یا به مشاوره تخصصی سایت مراجعه کنی.",
+        reply_markup=reply_markup
     )
-    await update.message.reply_text(about_text)
 
-# 🔹 پردازش پیام‌ها
+# پاسخ به کلیک دکمه‌ها
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "faq":
+        text = (
+            "📚 سوالات رایج حقوقی:\n"
+            "1. مهریه چگونه محاسبه می‌شود؟\n"
+            "2. فسخ قرارداد به چه صورت انجام می‌شود؟\n"
+            "3. قوانین اجاره مسکن چیست؟\n\n"
+            "برای پاسخ کامل به سایت محضرباشی مراجعه کنید."
+        )
+        await send_text_and_audio(query, text)
+
+# ارسال متن و فایل صوتی
+async def send_text_and_audio(update_or_query, text):
+    # ارسال متن
+    if isinstance(update_or_query, Update):
+        await update_or_query.message.reply_text(text)
+    else:
+        await update_or_query.edit_message_text(text)
+
+    # تولید فایل صوتی
+    tts = gTTS(text=text, lang='fa')
+    audio_fp = BytesIO()
+    tts.write_to_fp(audio_fp)
+    audio_fp.seek(0)
+
+    if isinstance(update_or_query, Update):
+        await update_or_query.message.reply_audio(audio_fp, filename="response.mp3")
+    else:
+        await update_or_query.message.reply_audio(audio_fp, filename="response.mp3")
+
+# پاسخ به پیام‌های متنی کاربر
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
-
-    if not user_text:
-        return
-
-    # فقط سؤالات حقوقی پاسخ داده می‌شوند
-    if any(word in user_text for word in ["طلاق", "مهریه", "نفقه", "چک", "قرارداد", "سند", "ملک", "دادگاه", "ارث"]):
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "model": "llama3-70b-8192",
-            "messages": [
-                {"role": "system", "content": "تو یک مشاور حقوقی با لحن دوستانه و حرفه‌ای هستی."},
-                {"role": "user", "content": user_text}
-            ]
-        }
-
-        try:
-            response = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
-            reply = response.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            reply = "متأسفم، مشکلی در پاسخگویی به وجود آمد. لطفاً دوباره تلاش کنید."
-
-        await update.message.reply_text(reply)
+    # اینجا می‌توانی هوش مصنوعی یا بانک سوالات حقوقی را وصل کنی
+    if "مهریه" in user_text:
+        response = "مهریه طبق قانون مدنی محاسبه می‌شود. برای جزئیات بیشتر به سایت محضرباشی مراجعه کنید."
     else:
-        await update.message.reply_text(
-            "سؤال شما خارج از حوزه حقوقی است. لطفاً پرسش خود را دقیق‌تر و در زمینه‌ی حقوقی مطرح کنید 🙏"
-        )
+        response = "سوالت دریافت شد ✅\nبرای پاسخ تخصصی به سایت محضرباشی مراجعه کن."
+    await send_text_and_audio(update, response)
 
-# 🔹 اجرای ربات
+# ساخت اپلیکیشن
+app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+# اضافه کردن هندلرها
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(button))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+# اجرای ربات
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🚀 Mahzarbashi Legal Assistant (Groq) is running ...")
     app.run_polling()
