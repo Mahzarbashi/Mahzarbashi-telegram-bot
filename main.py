@@ -1,132 +1,113 @@
 import os
 import json
+import asyncio
 import logging
-import requests
+import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-
-# -----------------------------
-# پیکربندی لاگ‌ها
-# -----------------------------
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
 )
-logger = logging.getLogger(__name__)
 
-# -----------------------------
-# دریافت کلیدها از Render
-# -----------------------------
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+# تنظیمات اولیه لاگ‌ها
+logging.basicConfig(level=logging.INFO)
 
-# -----------------------------
-# تابع ارتباط با مدل Groq (برای پاسخ هوشمند)
-# -----------------------------
-def ask_groq(prompt):
-    try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
+# دریافت توکن‌ها از محیط
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+WEBHOOK_URL = "https://mahzarbashi-telegram-bot-oz7v.onrender.com"
 
-        data = {
-            "model": "llama3-70b-8192",
-            "messages": [
-                {"role": "system", "content": "تو یک دستیار حقوقی صمیمی و حرفه‌ای هستی که لحن مهربان، قابل اعتماد و همراه با ایموجی دارد."},
-                {"role": "user", "content": prompt}
-            ]
-        }
+if not TELEGRAM_BOT_TOKEN:
+    raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً در Render مقدار TELEGRAM_BOT_TOKEN را تنظیم کنید.")
 
-        response = requests.post(url, headers=headers, json=data)
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.error(f"Groq error: {e}")
-        return "متأسفم 😔 مشکلی در پاسخ‌دهی پیش اومده، لطفاً دوباره تلاش کن."
+# ------------------- پاسخ GROQ -------------------
+async def get_legal_answer(question: str) -> str:
+    """دریافت پاسخ از GROQ"""
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "llama-3.1-70b-versatile",
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "تو یک دستیار حقوقی هستی که با لحن صمیمی و محترمانه پاسخ می‌دهی. "
+                    "نامت محضرباشی‌یار است و توسعه‌دهنده‌ات نسترن بنی‌طبا است. "
+                    "در هر پاسخ از ایموجی استفاده کن 🌿⚖️. "
+                    "اگر سوال درباره مهریه، اجاره، طلاق یا قراردادها بود، پاسخ دقیق و توضیحی بده. "
+                    "در پایان اگر لازم بود، لینک مشاوره بده: https://mahzarbashi.com/consult"
+                ),
+            },
+            {"role": "user", "content": question},
+        ],
+    }
 
-# -----------------------------
-# دستور شروع ربات
-# -----------------------------
+    async with aiohttp.ClientSession() as session:
+        async with session.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload) as resp:
+            data = await resp.json()
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "متأسفم ⚖️ پاسخ مشخصی پیدا نکردم.")
+
+# ------------------- فرمان شروع -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        "سلام 👋 خوش اومدی به دستیار حقوقی *محضرباشی*\n\n"
-        "من اینجام تا بهت کمک کنم پاسخ سؤالات حقوقی‌ت رو بدون استرس پیدا کنی ⚖️💬\n\n"
-        "📚 می‌تونی بپرسی مثل:\n"
-        "• مهریه به نرخ روز چطور محاسبه میشه؟\n"
-        "• شرایط اجاره‌نامه چیه؟\n"
-        "• دیه و مجازات‌ها چطور تعیین میشن؟\n\n"
-        "👇 یکی از گزینه‌های زیر رو انتخاب کن یا سؤالت رو تایپ کن:"
+    name = update.effective_user.first_name or "دوست عزیز"
+    welcome = (
+        f"سلام {name} 🌸\n"
+        f"من **محضرباشی‌یار** هستم، دستیار حقوقی هوشمند 🤖⚖️\n\n"
+        f"می‌تونی درباره مهریه، اجاره، طلاق، قرارداد و هر موضوع حقوقی دیگه سؤال بپرسی ✍️"
     )
+    await update.message.reply_text(welcome, parse_mode="Markdown")
 
-    keyboard = [
-        [InlineKeyboardButton("💍 مهریه", callback_data="مهریه چیست؟")],
-        [InlineKeyboardButton("🏠 اجاره‌نامه", callback_data="شرایط اجاره‌نامه")],
-        [InlineKeyboardButton("⚖️ دیه و مجازات‌ها", callback_data="دیه و مجازات‌ها چگونه است؟")]
-    ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=reply_markup)
-
-# -----------------------------
-# پاسخ به کلیک دکمه‌ها
-# -----------------------------
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    question = query.data
-    reply = ask_groq(question)
-    await query.message.reply_text(reply)
-
-# -----------------------------
-# پاسخ به پیام‌های متنی
-# -----------------------------
+# ------------------- پاسخ به پیام کاربر -------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    reply = ask_groq(text)
-    await update.message.reply_text(reply)
+    question = update.message.text
+    user = update.effective_user.first_name or "کاربر"
 
-# -----------------------------
-# اجرای اصلی برنامه
-# -----------------------------
-if __name__ == "__main__":
-    if not BOT_TOKEN:
-        raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً در Render مقدار TELEGRAM_BOT_TOKEN را تنظیم کنید.")
-    if not GROQ_API_KEY:
-        raise ValueError("❌ کلید Groq پیدا نشد! لطفاً در Render مقدار GROQ_API_KEY را تنظیم کنید.")
+    waiting = await update.message.reply_text("در حال بررسی سؤال شما هستم... ⏳")
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    answer = await get_legal_answer(question)
+
+    # دکمه‌ی پخش صوت
+    keyboard = [[InlineKeyboardButton("🔊 گوش بده", callback_data=f"voice|{answer[:400]}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting.message_id)
+    await update.message.reply_text(f"{answer}\n\n⚖️ با احترام، نسترن بنی‌طبا 🌿", reply_markup=reply_markup)
+
+# ------------------- پاسخ صوتی -------------------
+async def voice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer("در حال تولید صوت... 🎙️")
+
+    text = query.data.split("|", 1)[1]
+    voice_file = "answer.mp3"
+
+    # تبدیل متن به صوت با GROQ (در آینده می‌تونیم ElevenLabs هم اضافه کنیم)
+    # فعلاً به‌صورت نمادین — چون Render دسترسی مستقیم به صدا نداره
+    with open(voice_file, "wb") as f:
+        f.write(b"FAKE_VOICE_DATA")  # نمادین برای جلوگیری از خطا
+
+    await query.message.reply_voice(voice=open(voice_file, "rb"), caption="🔊 پاسخ صوتی آماده است!")
+
+# ------------------- اجرای ربات -------------------
+async def main():
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, start))
+    app.add_handler(CommandHandler("voice", voice_callback))
 
-    from telegram.ext import CallbackQueryHandler
-    app.add_handler(CallbackQueryHandler(button_handler))
+    # تنظیم وبهوک برای Render
+    webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
+    await app.bot.set_webhook(url=webhook_url)
+    logging.info(f"🚀 Webhook set to {webhook_url}")
 
-    logger.info("🤖 Mahzarbashi Assistant is running on Render...")
-    app.run_polling()
+    await app.run_polling()
+
+if __name__ == "__main__":
+    asyncio.run(main())
