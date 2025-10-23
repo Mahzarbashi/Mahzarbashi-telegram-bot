@@ -1,98 +1,132 @@
-from io import BytesIO
-from gtts import gTTS
+import os
+import json
+import logging
+import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ContextTypes, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+
+# -----------------------------
+# پیکربندی لاگ‌ها
+# -----------------------------
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"
+# -----------------------------
+# دریافت کلیدها از Render
+# -----------------------------
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
-# === بانک حقوقی داخلی ===
-LEGAL_BANK = {
-    "مدنی": {
-        "مهریه": {
-            "title": "مهریه و شرایط آن",
-            "text": (
-                "مَهریه و شرایط آن: مرد به هنگام اجرای صیغه نکاح، چیزی را به زنش می‌دهد "
-                "که نشان‌دهنده قصد او برای نکاح باشد و در اصطلاح مَهریه یا صداق نامیده می‌شود.\n\n"
-                "نحوه محاسبه مهریه: مثال: اگر مهریه ۱۱۰ سکه و ارزش هر سکه ۱۵ میلیون تومان باشد، "
-                "کل مهریه = ۱۱۰ × ۱۵٫۰۰۰٫۰۰۰ = ۱٫۶۵۰٫۰۰۰٫۰۰۰ تومان."
-            )
-        },
-        "اجاره": {
-            "title": "قوانین اجاره",
-            "text": "قوانین اجاره مسکن طبق قانون روابط موجر و مستأجر اجرا می‌شود. ..."
+# -----------------------------
+# تابع ارتباط با مدل Groq (برای پاسخ هوشمند)
+# -----------------------------
+def ask_groq(prompt):
+    try:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
         }
-    },
-    "جزا": {
-        "دیه": {
-            "title": "دیه و مجازات‌ها",
-            "text": "دیه و مجازات‌ها طبق قانون مجازات اسلامی تعیین می‌شود. ..."
+
+        data = {
+            "model": "llama3-70b-8192",
+            "messages": [
+                {"role": "system", "content": "تو یک دستیار حقوقی صمیمی و حرفه‌ای هستی که لحن مهربان، قابل اعتماد و همراه با ایموجی دارد."},
+                {"role": "user", "content": prompt}
+            ]
         }
-    }
-}
 
-CATEGORIES = list(LEGAL_BANK.keys())
+        response = requests.post(url, headers=headers, json=data)
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    except Exception as e:
+        logger.error(f"Groq error: {e}")
+        return "متأسفم 😔 مشکلی در پاسخ‌دهی پیش اومده، لطفاً دوباره تلاش کن."
 
-# === توابع ربات ===
+# -----------------------------
+# دستور شروع ربات
+# -----------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton(cat, callback_data=cat)] for cat in CATEGORIES] \
-               + [[InlineKeyboardButton("مشاوره تخصصی", url="https://mahzarbashi.com/consult")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "سلام! من دستیار حقوقی محضرباشی هستم ✅\n"
-        "می‌توانی موضوع موردنظر را از دکمه‌ها انتخاب کنی یا عنوان موضوع/شماره ماده را بپرسی.\n\n"
-        "این ربات توسط نسترن بنی‌طبا ساخته شده است.",
-        reply_markup=reply_markup
+    msg = (
+        "سلام 👋 خوش اومدی به دستیار حقوقی *محضرباشی*\n\n"
+        "من اینجام تا بهت کمک کنم پاسخ سؤالات حقوقی‌ت رو بدون استرس پیدا کنی ⚖️💬\n\n"
+        "📚 می‌تونی بپرسی مثل:\n"
+        "• مهریه به نرخ روز چطور محاسبه میشه؟\n"
+        "• شرایط اجاره‌نامه چیه؟\n"
+        "• دیه و مجازات‌ها چطور تعیین میشن؟\n\n"
+        "👇 یکی از گزینه‌های زیر رو انتخاب کن یا سؤالت رو تایپ کن:"
     )
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("💍 مهریه", callback_data="مهریه چیست؟")],
+        [InlineKeyboardButton("🏠 اجاره‌نامه", callback_data="شرایط اجاره‌نامه")],
+        [InlineKeyboardButton("⚖️ دیه و مجازات‌ها", callback_data="دیه و مجازات‌ها چگونه است؟")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=reply_markup)
+
+# -----------------------------
+# پاسخ به کلیک دکمه‌ها
+# -----------------------------
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    category = query.data
-    if category in LEGAL_BANK:
-        text = f"📚 موضوعات موجود در دسته {category}:\n"
-        for topic in LEGAL_BANK[category]:
-            text += f"- {topic}\n"
-        await send_text_and_audio(query, text)
 
+    question = query.data
+    reply = ask_groq(question)
+    await query.message.reply_text(reply)
+
+# -----------------------------
+# پاسخ به پیام‌های متنی
+# -----------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text.strip()
-    found = False
-    for category, topics in LEGAL_BANK.items():
-        for topic_name, topic_data in topics.items():
-            if user_text == topic_name:
-                answer = f"{topic_data['title']}\n\n{topic_data['text']}"
-                await send_text_and_audio(update, answer)
-                found = True
-                break
-        if found:
-            break
-    if not found:
-        response = ("سوالت دریافت شد ✅\n"
-                    "برای پاسخ تخصصی و جزئیات بیشتر لطفاً به سایت محضرباشی مراجعه کنید:\n"
-                    "https://mahzarbashi.com/consult")
-        await send_text_and_audio(update, response)
+    text = update.message.text
+    reply = ask_groq(text)
+    await update.message.reply_text(reply)
 
-async def send_text_and_audio(update_or_query, text):
-    if isinstance(update_or_query, Update):
-        await update_or_query.message.reply_text(text)
-    else:
-        await update_or_query.edit_message_text(text)
-    tts = gTTS(text=text, lang='fa')
-    audio_fp = BytesIO()
-    tts.write_to_fp(audio_fp)
-    audio_fp.seek(0)
-    if isinstance(update_or_query, Update):
-        await update_or_query.message.reply_audio(audio_fp, filename="response.mp3")
-    else:
-        await update_or_query.message.reply_audio(audio_fp, filename="response.mp3")
-
-# === اجرای ربات با Polling ===
+# -----------------------------
+# اجرای اصلی برنامه
+# -----------------------------
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    if not BOT_TOKEN:
+        raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً در Render مقدار TELEGRAM_BOT_TOKEN را تنظیم کنید.")
+    if not GROQ_API_KEY:
+        raise ValueError("❌ کلید Groq پیدا نشد! لطفاً در Render مقدار GROQ_API_KEY را تنظیم کنید.")
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+
+    from telegram.ext import CallbackQueryHandler
+    app.add_handler(CallbackQueryHandler(button_handler))
+
+    logger.info("🤖 Mahzarbashi Assistant is running on Render...")
     app.run_polling()
