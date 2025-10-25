@@ -1,113 +1,89 @@
 import os
-import json
-import asyncio
 import logging
-import aiohttp
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
-    filters,
+    filters
 )
+from gtts import gTTS
 
-# تنظیمات اولیه لاگ‌ها
+# تنظیمات لاگ
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# دریافت توکن‌ها از محیط
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-WEBHOOK_URL = "https://mahzarbashi-telegram-bot-oz7v.onrender.com"
-
-if not TELEGRAM_BOT_TOKEN:
+# دریافت توکن از محیط Render
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not TOKEN:
     raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً در Render مقدار TELEGRAM_BOT_TOKEN را تنظیم کنید.")
 
-# ------------------- پاسخ GROQ -------------------
-async def get_legal_answer(question: str) -> str:
-    """دریافت پاسخ از GROQ"""
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "llama-3.1-70b-versatile",
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "تو یک دستیار حقوقی هستی که با لحن صمیمی و محترمانه پاسخ می‌دهی. "
-                    "نامت محضرباشی‌یار است و توسعه‌دهنده‌ات نسترن بنی‌طبا است. "
-                    "در هر پاسخ از ایموجی استفاده کن 🌿⚖️. "
-                    "اگر سوال درباره مهریه، اجاره، طلاق یا قراردادها بود، پاسخ دقیق و توضیحی بده. "
-                    "در پایان اگر لازم بود، لینک مشاوره بده: https://mahzarbashi.com/consult"
-                ),
-            },
-            {"role": "user", "content": question},
-        ],
-    }
+# ساخت اپلیکیشن
+app = Application.builder().token(TOKEN).build()
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload) as resp:
-            data = await resp.json()
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "متأسفم ⚖️ پاسخ مشخصی پیدا نکردم.")
-
-# ------------------- فرمان شروع -------------------
+# پیام شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = update.effective_user.first_name or "دوست عزیز"
-    welcome = (
-        f"سلام {name} 🌸\n"
-        f"من **محضرباشی‌یار** هستم، دستیار حقوقی هوشمند 🤖⚖️\n\n"
-        f"می‌تونی درباره مهریه، اجاره، طلاق، قرارداد و هر موضوع حقوقی دیگه سؤال بپرسی ✍️"
-    )
-    await update.message.reply_text(welcome, parse_mode="Markdown")
-
-# ------------------- پاسخ به پیام کاربر -------------------
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    question = update.message.text
-    user = update.effective_user.first_name or "کاربر"
-
-    waiting = await update.message.reply_text("در حال بررسی سؤال شما هستم... ⏳")
-
-    answer = await get_legal_answer(question)
-
-    # دکمه‌ی پخش صوت
-    keyboard = [[InlineKeyboardButton("🔊 گوش بده", callback_data=f"voice|{answer[:400]}")]]
+    keyboard = [
+        [InlineKeyboardButton("🗣 دریافت صوتی پاسخ", callback_data="voice_mode")],
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting.message_id)
-    await update.message.reply_text(f"{answer}\n\n⚖️ با احترام، نسترن بنی‌طبا 🌿", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "سلام 🌸 من ربات محضرباشی هستم!\n"
+        "سؤالت رو بنویس تا بهت جواب بدم 👩‍⚖️",
+        reply_markup=reply_markup
+    )
 
-# ------------------- پاسخ صوتی -------------------
-async def voice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# پاسخ به پیام‌ها
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text
+
+    # پاسخ پیش‌فرض متنی
+    response = f"پاسخت 👇\n\n💬 {user_message} مربوط به مسائل حقوقی هست؟ اگر بله، لطفاً نوعش رو مشخص کن (مثل خانواده، قرارداد، کیفری و ...)"
+
+    keyboard = [
+        [InlineKeyboardButton("🔊 پخش صوتی همین پاسخ", callback_data=f"voice:{response}")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(response, reply_markup=reply_markup)
+
+# تولید صوت از متن
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("در حال تولید صوت... 🎙️")
+    await query.answer()
 
-    text = query.data.split("|", 1)[1]
-    voice_file = "answer.mp3"
+    if query.data.startswith("voice:"):
+        text = query.data.replace("voice:", "")
+        tts = gTTS(text=text, lang="fa")
+        tts.save("voice.mp3")
+        await query.message.reply_voice(voice=open("voice.mp3", "rb"))
+    elif query.data == "voice_mode":
+        await query.message.reply_text("از این به بعد می‌تونی با دکمه «🔊 پخش صوتی» جواب‌هارو گوش بدی 🎧")
 
-    # تبدیل متن به صوت با GROQ (در آینده می‌تونیم ElevenLabs هم اضافه کنیم)
-    # فعلاً به‌صورت نمادین — چون Render دسترسی مستقیم به صدا نداره
-    with open(voice_file, "wb") as f:
-        f.write(b"FAKE_VOICE_DATA")  # نمادین برای جلوگیری از خطا
+# هندلرها
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(CallbackQueryHandler(button_handler))
 
-    await query.message.reply_voice(voice=open(voice_file, "rb"), caption="🔊 پاسخ صوتی آماده است!")
-
-# ------------------- اجرای ربات -------------------
+# راه‌اندازی Webhook برای Render
 async def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    port = int(os.environ.get("PORT", 8080))
+    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.COMMAND, start))
-    app.add_handler(CommandHandler("voice", voice_callback))
+    if not webhook_url:
+        raise ValueError("❌ آدرس RENDER_EXTERNAL_URL در Render تنظیم نشده است!")
 
-    # تنظیم وبهوک برای Render
-    webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
+    webhook_url = f"{webhook_url}/webhook"
+
     await app.bot.set_webhook(url=webhook_url)
-    logging.info(f"🚀 Webhook set to {webhook_url}")
+    logger.info(f"✅ Webhook set to: {webhook_url}")
 
-    await app.run_polling()
+    # سرور همیشه روشن می‌مونه
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
