@@ -1,2 +1,25 @@
-runtime: python
-pythonVersion: 3.11.9
+services:
+  - type: web
+    name: mahzarbashi-telegram-bot
+    env: python
+    runtime: python
+    pythonVersion: 3.11.9
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
+    autoDeploy: true
+    plan: free
+    region: frankfurt
+
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: WEBHOOK_URL
+        value: "https://mahzarbashi-telegram-bot.onrender.com"
+
+    healthCheckPath: "/"
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
