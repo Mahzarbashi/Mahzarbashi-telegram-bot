@@ -2,29 +2,37 @@ import os
 import tempfile
 import asyncio
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from gtts import gTTS
 
+# -----------------------------
 # دریافت توکن از محیط Render
+# -----------------------------
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
+
 if not TOKEN:
-    raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
+    print("⚠️ متغیر محیطی TELEGRAM_TOKEN پیدا نشد! از توکن تستی استفاده می‌کنیم.")
+    TOKEN = "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg"  # توکن موقت برای تست
 
 bot = Bot(token=TOKEN)
 
-# 🌐 پیام شروع
+# -----------------------------
+# پیام شروع
+# -----------------------------
 START_TEXT = (
     "🤖 این ربات توسط نسترن بنی‌طبا آماده شده است.\n"
     "📚 پاسخگوی سؤالات حقوقی شماست.\n"
     "سؤالتو بپرس تا با لحن دوستانه راهنماییت کنم 💬"
 )
 
-# ⚙️ پاسخ متنی و دکمه صوتی
+# -----------------------------
+# پاسخ متنی و دکمه صوتی
+# -----------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_first = update.effective_user.first_name
     text = update.message.text.strip()
 
-    # پاسخ دوستانه
+    # پاسخ دوستانه و پیش‌فرض
     reply_text = f"😊 {user_first} عزیز!\n{START_TEXT}\n\nسؤالت: {text}\n\nجواب حقوقی: در حال بررسی… ⚖️"
 
     # دکمه گوش دادن صوتی
@@ -33,7 +41,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply_text, reply_markup=reply_markup)
 
-# 🎧 تولید و ارسال فایل صوتی
+# -----------------------------
+# تولید و ارسال فایل صوتی
+# -----------------------------
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -47,24 +57,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text("✅ فایل صوتی برات فرستادم 🎵")
 
-# 🧩 راه‌اندازی Application
+# -----------------------------
+# راه‌اندازی Application
+# -----------------------------
 application = Application.builder().token(TOKEN).build()
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 application.add_handler(CallbackQueryHandler(button_handler))
 
-# 🏁 اجرای ربات با وبهوک روی Render
+# -----------------------------
+# اجرای ربات با وبهوک روی Render
+# -----------------------------
 async def main():
-    # URL وبهوک
     hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
     if not hostname:
         raise ValueError("❌ متغیر محیطی RENDER_EXTERNAL_HOSTNAME پیدا نشد!")
+
     url = f"https://{hostname}/{TOKEN}"
 
     # ست کردن وبهوک
     await bot.set_webhook(url)
     print(f"✅ Webhook set to: {url}")
 
-    # اجرای Application (telegram.ext)
+    # اجرای Application
     await application.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
@@ -72,5 +86,8 @@ async def main():
         webhook_url=url
     )
 
+# -----------------------------
+# اجرا
+# -----------------------------
 if __name__ == "__main__":
     asyncio.run(main())
