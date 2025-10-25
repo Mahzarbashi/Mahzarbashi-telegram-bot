@@ -1,89 +1,71 @@
 import os
-import logging
-import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update, 
+    InlineKeyboardButton, 
+    InlineKeyboardMarkup, 
+    InputFile
+)
 from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
+    ApplicationBuilder, 
+    CommandHandler, 
+    MessageHandler, 
+    CallbackQueryHandler, 
+    ContextTypes, 
     filters
 )
 from gtts import gTTS
+import tempfile
 
-# تنظیمات لاگ
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 🟢 توکن ربات
+TOKEN = os.getenv("BOT_TOKEN", "932785959:AAGR9Z_g87RUwuGygcx76lPG5i725jT52TM")
 
-# دریافت توکن از محیط Render
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً در Render مقدار TELEGRAM_BOT_TOKEN را تنظیم کنید.")
-
-# ساخت اپلیکیشن
-app = Application.builder().token(TOKEN).build()
-
-# پیام شروع
+# 🟢 دستور شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🗣 دریافت صوتی پاسخ", callback_data="voice_mode")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    user_first = update.effective_user.first_name
+    text = f"سلام {user_first} 🌷\nمن دستیار حقوقی محضرباشی هستم 🤖\nسؤالت رو بنویس تا کمکت کنم 💬"
+    await update.message.reply_text(text)
 
-    await update.message.reply_text(
-        "سلام 🌸 من ربات محضرباشی هستم!\n"
-        "سؤالت رو بنویس تا بهت جواب بدم 👩‍⚖️",
-        reply_markup=reply_markup
-    )
-
-# پاسخ به پیام‌ها
+# 🟢 پاسخ متنی و دکمه‌ی پخش صوت
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
+    user_msg = update.message.text
 
-    # پاسخ پیش‌فرض متنی
-    response = f"پاسخت 👇\n\n💬 {user_message} مربوط به مسائل حقوقی هست؟ اگر بله، لطفاً نوعش رو مشخص کن (مثل خانواده، قرارداد، کیفری و ...)"
+    # پاسخ ساده (در آینده می‌تونه با هوش مصنوعی پاسخ بده)
+    response_text = f"📘 پاسخ حقوقی: \nسؤال شما دریافت شد ✅\n\nاگر خواستی همین پاسخ رو به‌صورت صوتی گوش بدی، دکمه زیر رو بزن 🎧"
 
     keyboard = [
-        [InlineKeyboardButton("🔊 پخش صوتی همین پاسخ", callback_data=f"voice:{response}")],
+        [InlineKeyboardButton("🔊 پخش صوت", callback_data=f"voice|{user_msg}")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(response, reply_markup=reply_markup)
+    await update.message.reply_text(response_text, reply_markup=reply_markup)
 
-# تولید صوت از متن
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🟢 تبدیل پاسخ به صوت در صورت درخواست
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data.startswith("voice:"):
-        text = query.data.replace("voice:", "")
-        tts = gTTS(text=text, lang="fa")
-        tts.save("voice.mp3")
-        await query.message.reply_voice(voice=open("voice.mp3", "rb"))
-    elif query.data == "voice_mode":
-        await query.message.reply_text("از این به بعد می‌تونی با دکمه «🔊 پخش صوتی» جواب‌هارو گوش بدی 🎧")
+    data = query.data
+    if data.startswith("voice|"):
+        text = "این پاسخ به صورت صوتی برات خونده میشه 🎙️"
+        await query.edit_message_text(text="🔊 در حال تولید صدای پاسخ...")
 
-# هندلرها
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-app.add_handler(CallbackQueryHandler(button_handler))
+        tts = gTTS(text=text, lang='fa')
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
+            tts.save(tmp_file.name)
+            await query.message.reply_audio(audio=InputFile(tmp_file.name, filename="reply.mp3"))
 
-# راه‌اندازی Webhook برای Render
-async def main():
-    port = int(os.environ.get("PORT", 8080))
-    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
-
-    if not webhook_url:
-        raise ValueError("❌ آدرس RENDER_EXTERNAL_URL در Render تنظیم نشده است!")
-
-    webhook_url = f"{webhook_url}/webhook"
-
-    await app.bot.set_webhook(url=webhook_url)
-    logger.info(f"✅ Webhook set to: {webhook_url}")
-
-    # سرور همیشه روشن می‌مونه
-    await asyncio.Event().wait()
-
+# 🟢 اجرای ربات
 if __name__ == "__main__":
-    asyncio.run(main())
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CallbackQueryHandler(button_callback))
+
+    print("🤖 Bot is running and ready for messages!")
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8080)),
+        url_path=TOKEN,
+        webhook_url=f"https://mahzarbashi.onrender.com/{TOKEN}"
+    )
