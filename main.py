@@ -1,91 +1,54 @@
 import os
-import asyncio
-import nest_asyncio
+import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from gtts import gTTS
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import asyncio
 
-# جلوگیری از ارور event loop تکراری در Render
-nest_asyncio.apply()
+# فعال‌سازی لاگ برای خطاها
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-# دریافت توکن از محیط Render
+# دریافت توکن از محیط
 TOKEN = os.getenv("TELEGRAM_TOKEN")
+
 if not TOKEN:
     raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
 
-# 🔹 پیام خوش‌آمد اولیه
+# دستور /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = (
-        "👋 سلام! این ربات توسط *نسترن بنی‌طبا* ساخته شده است.\n\n"
-        "من پاسخگوی سؤالات حقوقی شما هستم ⚖️.\n"
-        "سؤال حقوقی‌ات رو بنویس تا هم به‌صورت متنی و هم صوتی راهنمایی‌ات کنم 💬🎧"
-    )
-    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+    await update.message.reply_text("سلام! 👋 به ربات محضرباشی خوش اومدی.\nهر سوال حقوقی داری بپرس تا راهنماییت کنم.")
 
-# 🔹 پاسخ به پیام‌های متنی
+# پاسخ به پیام‌های متنی
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-
-    # بررسی اینکه پیام حقوقی است یا نه
-    keywords = ["طلاق", "مهریه", "قرارداد", "دادگاه", "شکایت", "حق", "وکیل", "اجاره", "ملک", "وصیت", "دیوان", "محکومیت"]
-    if any(word in text for word in keywords):
-        reply_text = (
-            f"📘 پاسخ حقوقی:\n"
-            f"در مورد «{text}»، طبق قوانین حقوقی ایران، این موضوع دارای ابعاد مختلفی است. "
-            f"به طور کلی، حقوق و تکالیف هر طرف باید طبق قرارداد یا قانون مشخص شود.\n\n"
-            f"اگر جزئیات بیشتری داری، بهتره در سایت محضرباشی در بخش «مشاوره حقوقی» ثبت کنی:\n"
-            f"https://mahzarbashi.ir"
-        )
-        await update.message.reply_text(reply_text)
-
-        # تولید و ارسال پاسخ صوتی
-        tts = gTTS(text=reply_text, lang='fa')
-        tts.save("reply.mp3")
-        with open("reply.mp3", "rb") as voice_file:
-            await update.message.reply_voice(voice=voice_file)
-
+    user_message = update.message.text.lower()
+    if "طلاق" in user_message:
+        reply = "برای طلاق، باید دادخواست در دفتر خدمات قضایی ثبت بشه. 👩‍⚖️"
+    elif "مهریه" in user_message:
+        reply = "برای مهریه، زن می‌تونه از طریق اجرای ثبت یا دادگاه خانواده اقدام کنه."
+    elif "حضانت" in user_message:
+        reply = "حضانت فرزند تا ۷ سالگی با مادره، بعد از اون با نظر دادگاه مشخص می‌شه."
     else:
-        await update.message.reply_text(
-            "⚖️ لطفاً فقط سؤال حقوقی بپرس تا بتونم دقیق راهنمایی‌ات کنم.\n"
-            "برای سؤالات عمومی‌تر به سایت محضرباشی برو:\nhttps://mahzarbashi.ir"
-        )
+        reply = "سوالت حقوقی‌تر بپرس تا دقیق‌تر راهنماییت کنم. ⚖️"
+    await update.message.reply_text(reply)
 
-# 🔹 اجرای اصلی برنامه
+# ساخت اپلیکیشن
 async def main():
-    application = (
-        ApplicationBuilder()
-        .token(TOKEN)
-        .build()
-    )
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    # افزودن هندلرها
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # تنظیم Webhook برای Render
-    port = int(os.environ.get("PORT", 8080))
-    render_url = os.environ.get("RENDER_EXTERNAL_URL")
-    if not render_url:
-        raise ValueError("❌ مقدار RENDER_EXTERNAL_URL تنظیم نشده است!")
+    # اجرای بات
+    await app.run_polling()
 
-    webhook_url = f"{render_url}/{TOKEN}"
-    print(f"✅ Webhook set to: {webhook_url}")
-
-    await application.initialize()
-    await application.start()
-    await application.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=TOKEN,
-        webhook_url=webhook_url,
-    )
-
-# 🧠 اجرای بدون ارور در Render
+# اجرای ایمن برای Render
 if __name__ == "__main__":
     try:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(main())
-    except RuntimeError:
-        new_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(new_loop)
-        new_loop.run_until_complete(main())
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "Cannot close a running event loop" in str(e):
+            pass  # Render خودش event loop را مدیریت می‌کند
+        else:
+            raise
