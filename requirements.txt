@@ -1,3 +1,2 @@
-python-telegram-bot[webhooks]==20.4
-Flask
-gTTS
+python-telegram-bot[webhooks]==20.7
+aiohttp==3.9.1
