@@ -1,54 +1,54 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-import asyncio
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, filters
+)
 
-# فعال‌سازی لاگ برای خطاها
+# فعال‌سازی لاگ‌ها
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 
-# دریافت توکن از محیط
+# گرفتن توکن از محیط Render
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 if not TOKEN:
     raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
 
-# دستور /start
+# --- دستور شروع ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! 👋 به ربات محضرباشی خوش اومدی.\nهر سوال حقوقی داری بپرس تا راهنماییت کنم.")
+    await update.message.reply_text(
+        "سلام 👋 به ربات محضرباشی خوش اومدی.\n"
+        "هر سوال حقوقی داری، بپرس تا راهنماییت کنم ⚖️"
+    )
 
-# پاسخ به پیام‌های متنی
+# --- پاسخ به پیام‌ها ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text.lower()
-    if "طلاق" in user_message:
-        reply = "برای طلاق، باید دادخواست در دفتر خدمات قضایی ثبت بشه. 👩‍⚖️"
-    elif "مهریه" in user_message:
-        reply = "برای مهریه، زن می‌تونه از طریق اجرای ثبت یا دادگاه خانواده اقدام کنه."
-    elif "حضانت" in user_message:
-        reply = "حضانت فرزند تا ۷ سالگی با مادره، بعد از اون با نظر دادگاه مشخص می‌شه."
-    else:
-        reply = "سوالت حقوقی‌تر بپرس تا دقیق‌تر راهنماییت کنم. ⚖️"
-    await update.message.reply_text(reply)
+    text = update.message.text.strip().lower()
 
-# ساخت اپلیکیشن
-async def main():
+    if "طلاق" in text:
+        answer = "برای طلاق باید دادخواست از طریق دفتر خدمات قضایی ثبت بشه 👩‍⚖️"
+    elif "مهریه" in text:
+        answer = "برای مهریه زن می‌تونه از طریق اجرای ثبت یا دادگاه خانواده اقدام کنه 💰"
+    elif "حضانت" in text:
+        answer = "حضانت فرزند تا ۷ سالگی با مادره، بعد از اون با نظر دادگاه مشخص میشه 👶"
+    else:
+        answer = "سوالت حقوقی‌تر بپرس تا دقیق‌تر راهنماییت کنم ⚖️"
+
+    await update.message.reply_text(answer)
+
+# --- اجرای اصلی ---
+def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # اجرای بات
-    await app.run_polling()
+    # اجرای polling در حالت همزمان
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-# اجرای ایمن برای Render
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "Cannot close a running event loop" in str(e):
-            pass  # Render خودش event loop را مدیریت می‌کند
-        else:
-            raise
+    main()
