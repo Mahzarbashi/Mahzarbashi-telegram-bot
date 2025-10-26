@@ -1,5 +1,5 @@
 python-telegram-bot[webhooks]==20.7
-Flask
 gTTS
-aiohttp
 nest_asyncio
+aiohttp
+Flask
