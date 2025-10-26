@@ -1,90 +1,105 @@
 import os
-import logging
+import tempfile
 import asyncio
 import nest_asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from flask import Flask, request
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackContext, filters, CallbackQueryHandler
+from gtts import gTTS
 
-# فعال‌سازی log برای خطاها
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+nest_asyncio.apply()
 
-# --- توکن تلگرام ---
-TOKEN = os.getenv("TELEGRAM_TOKEN", "8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg")
+# 🔑 توکن از محیط Render
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
     raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
 
-# --- معرفی اولیه ---
-INTRO_TEXT = (
-    "👋 سلام! من ربات رسمی *محضرباشی* هستم.\n"
-    "توسعه‌دهنده‌ی من *نسترن بنی‌طبا* است.\n\n"
-    "من به سؤالات حقوقی شما پاسخ متنی و صوتی می‌دهم. "
-    "اگر پرسشت خیلی تخصصی باشد، شما را به سایت رسمی [محضرباشی](https://mahzarbashi.ir) راهنمایی می‌کنم."
-)
+bot = Bot(token=TOKEN)
+app = Flask(__name__)
 
-# --- پاسخ به دستور /start ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(INTRO_TEXT, parse_mode="Markdown")
+# 🌐 معرفی نسترن بنی‌طبا در شروع
+async def start(update: Update, context: CallbackContext):
+    intro_text = (
+        "سلام 👋\n"
+        "من ربات هوشمند «محضرباشی» هستم 🤖\n"
+        "این ربات توسط **نسترن بنی‌طبا** طراحی و توسعه داده شده 💼\n"
+        "من اینجام تا به سؤالات حقوقی شما پاسخ بدم — هم به‌صورت متنی هم صوتی 🎧\n\n"
+        "سؤالتو بفرست تا راهنماییت کنم ✨"
+    )
+    await update.message.reply_text(intro_text)
 
-# --- تابع پاسخ به پیام‌ها ---
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
+# ⚖️ پاسخ به سؤالات حقوقی
+async def handle_message(update: Update, context: CallbackContext):
+    text = update.message.text.strip().lower()
 
-    # بررسی اینکه سؤال حقوقی هست یا نه
-    if any(keyword in text for keyword in ["طلاق", "مهریه", "اجاره", "وصیت", "شکایت", "دادگاه", "قرارداد", "ارث", "حضانت", "جرم", "قانون"]):
-        # پاسخ حقوقی نمونه (۵ تا ۷ سطر)
-        answer = (
-            "پرسش شما مرتبط با موضوعات حقوقی است ✅\n\n"
-            "در چنین مواردی، بر اساس قانون مدنی و آیین دادرسی، "
-            "باید توجه داشت که پاسخ دقیق بسته به شرایط پرونده و مدارک موجود متفاوت است.\n\n"
-            "به‌صورت کلی، قانون در این مورد چارچوب مشخصی دارد که باید با مدارک اثباتی بررسی شود.\n\n"
-            "برای مطالعه‌ی کامل‌تر یا دریافت مشاوره‌ی تخصصی‌تر، "
-            "به بخش مشاوره در سایت [محضرباشی](https://mahzarbashi.ir) مراجعه کنید."
-        )
-        await update.message.reply_text(answer, parse_mode="Markdown")
-
-        # ایجاد پاسخ صوتی (در آینده قابل اضافه‌کردن با gTTS)
-    else:
+    # بررسی اینکه سوال حقوقی هست یا نه
+    keywords = ["طلاق", "مهریه", "وصیت", "شکایت", "قرارداد", "محکمه", "دادگاه", "حقوق", "کیفری", "دیوان", "نفقه", "اجاره"]
+    if not any(k in text for k in keywords):
         await update.message.reply_text(
-            "❗ این سؤال در حوزه‌ی حقوقی نیست.\n"
-            "لطفاً پرسش خود را درباره‌ی قانون، قرارداد، مهریه، طلاق، ارث یا دادگاه مطرح کنید."
+            "📘 من فقط به سؤالات **حقوقی** پاسخ می‌دم. لطفاً سؤال خودت رو در زمینه حقوق بپرس ⚖️"
         )
+        return
 
-# --- ساخت اپلیکیشن ---
-application = ApplicationBuilder().token(TOKEN).build()
-
-# --- هندلرها ---
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-# --- اجرای وبهوک در Render ---
-nest_asyncio.apply()
-
-async def main():
-    print("🚀 Starting Mahzarbashi Telegram Bot...")
-
-    render_url = os.getenv("RENDER_EXTERNAL_URL")
-    if not render_url:
-        raise ValueError("❌ مقدار RENDER_EXTERNAL_URL در Render تنظیم نشده است.")
-
-    webhook_url = f"{render_url}/{TOKEN}"
-
-    await application.initialize()
-    await application.start()
-    await application.bot.set_webhook(webhook_url)
-    print(f"✅ Webhook set to: {webhook_url}")
-
-    await application.updater.start_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8080)),
-        url_path=TOKEN,
-        webhook_url=webhook_url
+    # پاسخ نمونه‌ی حقوقی
+    reply_text = (
+        "⚖️ پاسخ حقوقی:\n"
+        "در این مورد باید توجه داشت که هر پرونده با شرایط خاص خودش بررسی می‌شود. "
+        "طبق قانون مدنی و آیین دادرسی، تصمیم نهایی بستگی به مدارک، شواهد و اظهارات طرفین دارد. "
+        "اگر موضوع شامل قرارداد یا شکایت رسمی است، باید متن دقیق مدارک بررسی شود. "
+        "برای جزئیات بیشتر و دریافت مشاوره تخصصی، می‌توانید به سایت محضرباشی مراجعه کنید 🌐\n"
+        "👉 mahzarbashi.ir"
     )
 
-    print("💡 Bot is now running and listening for messages.")
-    await application.updater.idle()
+    # دکمه‌ی پخش صوت
+    keyboard = [[InlineKeyboardButton("🎧 گوش دادن صوتی", callback_data=f"voice:{reply_text}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
+    await update.message.reply_text(reply_text, reply_markup=reply_markup)
+
+# 🎧 تبدیل پاسخ به صوت
+async def button_handler(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith("voice:"):
+        text = query.data.replace("voice:", "")
+        tts = gTTS(text=text, lang='fa')
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
+            tts.save(tmp_file.name)
+            await bot.send_audio(chat_id=query.message.chat_id, audio=open(tmp_file.name, 'rb'), title="پاسخ صوتی 🎧")
+
+        await query.edit_message_text("✅ فایل صوتی ارسال شد 🎵")
+
+# 🔧 تنظیم هندلرها
+application = Application.builder().token(TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+application.add_handler(CallbackQueryHandler(button_handler))
+
+# 🌍 مسیرهای Flask
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    application.update_queue.put_nowait(update)
+    return "OK"
+
+@app.route("/")
+def home():
+    return "🤖 Mahzarbashi Bot is running successfully!"
+
+# 🚀 اجرای Webhook در Render
 if __name__ == "__main__":
+    async def main():
+        print("🚀 Mahzarbashi Bot is starting...")
+        await application.initialize()
+        await application.start()
+        print("✅ Webhook running successfully!")
+
+        await application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.environ.get("PORT", 8080)),
+            url_path=TOKEN,
+            webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}",
+        )
+
     asyncio.run(main())
