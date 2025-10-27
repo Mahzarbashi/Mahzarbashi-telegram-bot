@@ -7,7 +7,7 @@ import tempfile
 import asyncio
 import nest_asyncio
 
-# ⚙️ حل مشکل asyncio loop در Flask
+# حل مشکل asyncio loop در Flask
 nest_asyncio.apply()
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -55,7 +55,6 @@ application.add_handler(CallbackQueryHandler(button_handler))
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    # استفاده از loop موجود
     loop = asyncio.get_event_loop()
     loop.create_task(application.update_queue.put(update))
     return "OK"
