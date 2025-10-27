@@ -1,4 +1,3 @@
-# main.py — Webhook-safe for Render
 import os
 import threading
 import asyncio
@@ -14,40 +13,54 @@ if not TOKEN:
     raise ValueError("TELEGRAM_TOKEN not set in environment")
 
 PORT = int(os.environ.get("PORT", 8443))
-RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")  # e.g. https://your-app.onrender.com
+RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")
 if not RENDER_URL:
     raise ValueError("RENDER_EXTERNAL_URL not set in environment")
 
 bot = Bot(TOKEN)
 app = Flask(__name__)
 
-# ---------- پاسخ کوتاه مثال ----------
+# ---------- پاسخ کوتاه و حقوقی ----------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
-    reply = "این ربات توسط نسترن بنی‌طبا ساخته شده است.\nمن به سؤالات حقوقی پاسخ می‌دهم. مثال: مهریه، طلاق، قرارداد."
-    await update.message.reply_text(reply)
-    # صوتی (اختیاری)
-    tts = gTTS(text=reply, lang="fa")
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-        tts.save(f.name)
-        with open(f.name, "rb") as audio:
-            await update.message.reply_voice(voice=audio)
+    reply = f"سلام {update.effective_user.first_name} عزیز!\n"
+    reply += "این ربات توسط نسترن بنی‌طبا ساخته شده است و پاسخگوی سؤالات حقوقی شماست ⚖️\n\n"
 
+    # نمونه فیلتر سؤالات حقوقی
+    keywords = ["قرارداد", "وکالت", "طلاق", "مهریه", "اجاره"]
+    if any(word in text for word in keywords):
+        reply += ("پاسخ کوتاه: ⚖️\nبرای توضیح کامل و مشاوره تخصصی به سایت محضرباشی مراجعه کنید:\n"
+                  "https://mahzarbashi.com")
+    else:
+        reply += "متأسفم، من فقط سؤالات حقوقی را پاسخ می‌دهم. برای اطلاعات بیشتر به سایت محضرباشی مراجعه کنید."
+
+    # دکمه صوتی
+    keyboard = [[InlineKeyboardButton("🎧 گوش دادن صوتی", callback_data=f"voice:{reply}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(reply, reply_markup=reply_markup)
+
+# ---------- هندلر دکمه صوتی ----------
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    await update.callback_query.edit_message_text("درخواست صوت ارسال شد.")
+    query = update.callback_query
+    await query.answer()
+    if query.data.startswith("voice:"):
+        text = query.data.replace("voice:", "")
+        tts = gTTS(text=text, lang="fa")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
+            tts.save(tmp_file.name)
+            with open(tmp_file.name, "rb") as audio:
+                await bot.send_audio(chat_id=query.message.chat_id, audio=audio, title="پاسخ صوتی 🎧")
+        await query.edit_message_text("✅ فایل صوتی برات فرستادم 🎵")
 
-# ---------- ساخت اپلیکیشن PTB ----------
+# ---------- اپلیکیشن PTB ----------
 application = ApplicationBuilder().token(TOKEN).build()
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 application.add_handler(CallbackQueryHandler(button_handler))
 
-# ---------- مسیر وبهوک (Flask) ----------
+# ---------- مسیر وبهوک Flask ----------
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook_route():
-    # دریافت json و تبدیل به Update
     update = Update.de_json(request.get_json(force=True), bot)
-    # قرار دادن در صف اپلیکیشن برای پردازش (async safe)
     asyncio.get_event_loop().create_task(application.update_queue.put(update))
     return "OK", 200
 
@@ -55,28 +68,22 @@ def webhook_route():
 def index():
     return "🤖 Mahzarbashi Bot running", 200
 
-# ---------- اجرای Flask در thread جدا ----------
+# ---------- اجرای Flask در Thread ----------
 def run_flask():
-    # Note: use host 0.0.0.0 so Render can see it
     app.run(host="0.0.0.0", port=PORT)
 
-# ---------- main async: راه‌اندازی PTB و ست کردن وبهوک ----------
+# ---------- Main async ----------
 async def main():
-    # اجرا کردن Flask در یک ترد داِمون
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # initialize and start PTB application
     await application.initialize()
     await application.start()
 
-    # ست کردن وبهوک به آدرس Render
     webhook_url = f"{RENDER_URL}/{TOKEN}"
     await bot.set_webhook(webhook_url)
     print("✅ Webhook set to:", webhook_url)
 
-    # PTB خودش باید آماده دریافت update_queue باشه؛ نگه داشتن برنامه
-    # اینجا فقط منتظر می‌مانیم که برنامه فعال بماند.
     try:
         while True:
             await asyncio.sleep(3600)
