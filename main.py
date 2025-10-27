@@ -1,127 +1,86 @@
 import os
 import asyncio
-import nest_asyncio
-import tempfile
 from fastapi import FastAPI, Request
-from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackContext,
-    CallbackQueryHandler,
-    filters,
-)
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters, CallbackContext
 from gtts import gTTS
+import tempfile
+import nest_asyncio
 
-# حل مشکل event loop در محیط‌هایی مثل Render
 nest_asyncio.apply()
 
-# تنظیمات از محیط
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
-    raise ValueError("توکن تلگرام پیدا نشد. لطفاً TELEGRAM_TOKEN را در Environment Variables تنظیم کن.")
+    raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
 
-HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
-if not HOSTNAME:
-    raise ValueError("RENDER_EXTERNAL_HOSTNAME پیدا نشد. این مقدار را در Render تنظیم کن.")
+WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
 
-WEBHOOK_URL = f"https://{HOSTNAME}/{TOKEN}"
+# ساخت Bot و Application
+bot = Bot(token=TOKEN)
+application = Application.builder().bot(bot).build()
 
-app = FastAPI()
-application = Application.builder().token(TOKEN).build()
+# پاسخ متنی و صوتی به سوالات حقوقی
+async def handle_message(update: Update, context: CallbackContext):
+    text = update.message.text.strip().lower()
+    reply_text = ""
 
-# --- توابع کمکی ---
-async def send_voice(chat_id: int, text: str):
-    """تولید و ارسال فایل صوتی با gTTS"""
-    tts = gTTS(text=text, lang="fa")
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-        tts.save(tmp.name)
-        tmp_path = tmp.name
-
-    try:
-        with open(tmp_path, "rb") as audio:
-            await application.bot.send_voice(chat_id=chat_id, voice=audio)
-    finally:
-        try:
-            os.remove(tmp_path)
-        except Exception:
-            pass
-
-# --- هندلرها ---
-async def start_handler(update: Update, context: CallbackContext):
-    name = update.effective_user.first_name or "دوست"
-    intro = (
-        f"سلام {name} عزیز! 👋\n"
-        "من ربات «محضرباشی» هستم — ساخته‌شده توسط نسترن بنی‌طبا.\n"
-        "می‌تونی هر سؤال حقوقی که داری بپرسی؛ من هم با زبان دوستانه جواب می‌دم و فایل صوتی هم می‌فرستم 🎧\n\n"
-        "سؤالتو اینجا بنویس تا راهنمایی‌ات کنم ✨"
-    )
-    await update.message.reply_text(intro)
-    await send_voice(update.effective_chat.id, intro)
-
-async def message_handler(update: Update, context: CallbackContext):
-    text = (update.message.text or "").strip()
-    lc = text.lower()
-
-    # کلیدواژه‌های ساده برای تشخیص سؤالات حقوقی
-    keywords = [
-        "طلاق", "مهریه", "نفقه", "حضانت", "قرارداد",
-        "اجاره", "وصیت", "شکایت", "دادگاه", "وکالت", "ارث"
-    ]
-
-    if not any(k in lc for k in keywords):
-        reply = (
-            "⚠️ من فقط به سؤالات حقوقی پاسخ می‌دم. لطفاً سوالت رو در مورد طلاق، مهریه، قرارداد، ارث یا امور دادگاه بپرس.\n\n"
-            "برای مشاورهٔ کامل‌تر و منابع بیشتر به سایت محضرباشی سر بزن:\nhttps://mahzarbashi.ir"
+    if any(word in text for word in ["قانون", "حقوق", "وکالت", "قرارداد", "مهریه", "طلاق"]):
+        reply_text = (
+            f"👋 سلام {update.effective_user.first_name}!\n"
+            "این ربات توسط نسترن بنی طبا آماده شده و پاسخگوی سوالات حقوقی است.\n\n"
+            "سوال شما:\n"
+            f'{update.message.text}\n\n'
+            "پاسخ کوتاه: برای جزئیات بیشتر و مشاوره تخصصی، لطفاً به سایت محضرباشی مراجعه کنید."
         )
-        await update.message.reply_text(reply)
-        await send_voice(update.effective_chat.id, reply)
-        return
+    else:
+        reply_text = (
+            f"👋 سلام {update.effective_user.first_name}!\n"
+            "این ربات فقط پاسخگوی سوالات حقوقی است.\n"
+            "برای سایر موارد، لطفاً به سایت محضرباشی مراجعه کنید."
+        )
 
-    # پاسخ دوستانه (۵-۷ سطر تقریبی)
-    reply = (
-        "⚖️ پاسخ کوتاه حقوقی (دوستانه):\n"
-        "در این موضوع معمولاً باید جزئیات پرونده و مدارک بررسی شود. "
-        "قانون چارچوب کلی را مشخص کرده اما نتیجه وابسته به شرایط است.\n"
-        "اگر مربوط به قرارداد یا مطالبهٔ مالی است، مدارک کتبی و رسیدها بسیار مهم‌اند. "
-        "برای اقدام قانونی احتمالی معمولاً نیاز به ثبت شکایت یا مراجعه به دفتر خدمات قضایی هست.\n"
-        "برای دریافت مشاورهٔ دقیق‌تر و بررسی مدارک، به بخش مشاورهٔ سایت محضرباشی مراجعه کن."
-    )
+    keyboard = [[InlineKeyboardButton("🎧 گوش دادن صوتی", callback_data=f"voice:{reply_text}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(reply_text, reply_markup=reply_markup)
 
-    await update.message.reply_text(reply)
-    await send_voice(update.effective_chat.id, reply)
+# تولید پاسخ صوتی
+async def button_handler(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+    if query.data.startswith("voice:"):
+        text = query.data.replace("voice:", "")
+        tts = gTTS(text=text, lang='fa')
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
+            tts.save(tmp_file.name)
+            await bot.send_audio(chat_id=query.message.chat_id, audio=open(tmp_file.name, 'rb'), title="پاسخ صوتی 🎧")
+        await query.edit_message_text("✅ فایل صوتی برات فرستادم 🎵")
 
-async def callback_handler(update: Update, context: CallbackContext):
-    # اگر دکمه‌ای اضافه شد بعداً می‌تونیم این رو گسترش بدیم
-    await update.callback_query.answer()
-    await update.callback_query.edit_message_text("درخواست صوتی در حال آماده‌سازی است...")
+# اضافه کردن Handler ها
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+application.add_handler(CallbackQueryHandler(button_handler))
 
-# ثبت هندلرها
-application.add_handler(CommandHandler("start", start_handler))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-application.add_handler(CallbackQueryHandler(callback_handler))
+# FastAPI و Lifespan
+from contextlib import asynccontextmanager
 
-# --- رویدادهای FastAPI برای startup/shutdown ---
-@app.on_event("startup")
-async def on_startup():
-    # initialize & start application (PTB)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     await application.initialize()
     await application.start()
-    # ست کردن وبهوک
-    await application.bot.set_webhook(WEBHOOK_URL)
+    await bot.set_webhook(WEBHOOK_URL)
     print("✅ Webhook set to:", WEBHOOK_URL)
-
-@app.on_event("shutdown")
-async def on_shutdown():
+    yield
     await application.stop()
     await application.shutdown()
 
-# --- مسیر وبهوک برای تلگرام ---
+app = FastAPI(lifespan=lifespan)
+
 @app.post(f"/{TOKEN}")
 async def telegram_webhook(request: Request):
     data = await request.json()
-    update = Update.de_json(data, application.bot)
-    # پردازش آسنکرون آپدیت توسط PTB
+    update = Update.de_json(data, bot)
     asyncio.create_task(application.process_update(update))
     return {"ok": True}
+
+@app.get("/")
+async def home():
+    return "🤖 Mahzarbashi Bot is running and happy! 💫"
