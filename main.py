@@ -2,7 +2,7 @@ import os
 import tempfile
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from gtts import gTTS
 import asyncio
 
@@ -14,7 +14,7 @@ if not TOKEN:
     raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
 
 PORT = int(os.environ.get("PORT", 8443))
-RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")  # این همون آدرس پروژه روی Render
+RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")  # آدرس پروژه روی Render
 
 bot = Bot(TOKEN)
 app = Flask(__name__)
@@ -28,15 +28,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_text = f"سلام {update.effective_user.first_name} عزیز!\n"
     reply_text += "این ربات توسط نسترن بنی‌طبا ساخته شده و پاسخگوی سؤالات حقوقی شماست ⚖️\n\n"
 
-    # پاسخ کوتاه یا ارجاع به سایت
     if any(word in text for word in ["قرارداد", "وکالت", "طلاق", "مهریه", "اجاره"]):
-        reply_text += ("سؤالت حقوقی شما دریافت شد. پاسخ کوتاه: ⚖️\n"
+        reply_text += ("سؤالت حقوقی دریافت شد. پاسخ کوتاه: ⚖️\n"
                        "برای توضیح کامل و مشاوره تخصصی به سایت محضرباشی مراجعه کنید:\n"
                        "https://mahzarbashi.com")
     else:
         reply_text += "متأسفم، من فقط سؤالات حقوقی رو پاسخ میدم. برای اطلاعات بیشتر به سایت محضرباشی مراجعه کنید."
 
-    # دکمه صوتی
     keyboard = [[InlineKeyboardButton("🎧 گوش دادن صوتی", callback_data=f"voice:{reply_text}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(reply_text, reply_markup=reply_markup)
@@ -47,7 +45,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if query.data.startswith("voice:"):
         text = query.data.replace("voice:", "")
         tts = gTTS(text=text, lang="fa")
@@ -80,12 +77,10 @@ def home():
 # اجرای Webhook
 # =======================
 async def main():
-    # ست کردن وبهوک
-    await bot.set_webhook(f"{RENDER_URL}/{TOKEN}")
-    print(f"✅ Webhook set to: {RENDER_URL}/{TOKEN}")
-    # اجرای اپلیکیشن
     await application.initialize()
     await application.start()
+    await bot.set_webhook(f"{RENDER_URL}/{TOKEN}")
+    print(f"✅ Webhook set to: {RENDER_URL}/{TOKEN}")
     await application.updater.start_webhook(
         listen="0.0.0.0",
         port=PORT,
