@@ -1,27 +1,27 @@
 import os
-import asyncio
 import nest_asyncio
-from flask import Flask, request
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from fastapi import FastAPI, Request
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from gtts import gTTS
 import tempfile
+import uvicorn
+import asyncio
 
-# حل مشکل event loop در Render
-nest_asyncio.apply()
+nest_asyncio.apply()  # حل مشکل loop در Render
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
     raise ValueError("توکن تلگرام پیدا نشد!")
 
 bot = Bot(token=TOKEN)
-app = Flask(__name__)
+app = FastAPI()
 
-# پاسخ متنی و صوتی
+# پاسخ حقوقی با دکمه صوتی
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_text = (
         f"سلام {update.effective_user.first_name} عزیز! 👋\n"
-        "این ربات توسط نسترن بنی طبا آماده شده است.\n"
+        "این ربات توسط نسترن بنی طبا ساخته شده است.\n"
         "من پاسخگوی سؤالات حقوقی هستم.\n"
         "برای جزئیات بیشتر به وبسایت محضرباشی مراجعه کنید."
     )
@@ -44,20 +44,19 @@ application = Application.builder().token(TOKEN).build()
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 application.add_handler(CallbackQueryHandler(button_handler))
 
-# Flask route وبهوک
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    # استفاده از loop موجود
-    asyncio.get_event_loop().create_task(application.update_queue.put(update))
-    return "OK"
+# وبهوک FastAPI
+@app.post(f"/{TOKEN}")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, bot)
+    asyncio.create_task(application.update_queue.put(update))
+    return {"ok": True}
 
-@app.route("/")
-def home():
-    return "🤖 ربات محضرباشی فعال است!"
+@app.get("/")
+def root():
+    return {"status": "🤖 ربات محضرباشی فعال است!"}
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
     hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
     if not hostname:
         raise ValueError("RENDER_EXTERNAL_HOSTNAME پیدا نشد!")
@@ -66,4 +65,5 @@ if __name__ == "__main__":
     asyncio.run(bot.set_webhook(webhook_url))
     print(f"✅ Webhook set to: {webhook_url}")
 
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, log_level="info")
