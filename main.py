@@ -1,70 +1,38 @@
 import os
-import logging
-from gtts import gTTS
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    ContextTypes, filters
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# فعال کردن لاگ‌ها
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+TOKEN = "8249435097:AAEqSwTL8Ah8Kfyzo9Z_iQE97OVUViXtOmY"
 
-# توکن ربات
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
-
-# مسیر ذخیره فایل‌های صوتی
-VOICE_DIR = "voices"
-os.makedirs(VOICE_DIR, exist_ok=True)
-
-# --- دستور شروع ---
+# پاسخ ساده برای تست
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "سلام 👋\n"
-        "به ربات حقوقی محضرباشی خوش اومدی ⚖️\n"
-        "هر سوال حقوقی داری بپرس تا هم با صدا و هم متن راهنماییت کنم ✨"
-    )
-    await update.message.reply_text(text)
-    await send_voice(update, text)
+    await update.message.reply_text("ربات محضرباشی با موفقیت فعاله ✅")
 
-# --- تولید و ارسال صوت ---
-async def send_voice(update: Update, text: str):
-    tts = gTTS(text=text, lang="fa")
-    filename = f"{VOICE_DIR}/reply.mp3"
-    tts.save(filename)
-    with open(filename, "rb") as voice_file:
-        await update.message.reply_voice(voice=voice_file)
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(update.message.text)
 
-# --- پاسخ به پیام‌ها ---
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text.strip().lower()
+# ساخت برنامه
+app = ApplicationBuilder().token(TOKEN).build()
 
-    if "طلاق" in user_text:
-        answer = "برای طلاق باید دادخواست در دفتر خدمات قضایی ثبت بشه 👩‍⚖️"
-    elif "مهریه" in user_text:
-        answer = "زن می‌تونه برای مهریه از طریق اجرای ثبت یا دادگاه خانواده اقدام کنه 💰"
-    elif "حضانت" in user_text:
-        answer = "حضانت تا ۷ سالگی با مادره و بعد از اون با نظر دادگاه تعیین میشه 👶"
-    elif "نفقه" in user_text:
-        answer = "نفقه شامل هزینه‌های متعارف زندگی زوجه است و مرد موظفه پرداخت کنه 💵"
-    else:
-        answer = "سوالت حقوقی‌تر بپرس تا دقیق‌تر راهنماییت کنم ⚖️"
+# هندلرها
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    await update.message.reply_text(answer)
-    await send_voice(update, answer)
-
-# --- اجرای اصلی ---
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+# اجرای webhook
+PORT = int(os.environ.get("PORT", 8443))
+URL = "https://mahzarbashi-bot.onrender.com"  # 👈 آدرس دقیق پروژه روی Render
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+
+    async def main():
+        await app.initialize()
+        # تنظیم وبهوک
+        await app.bot.set_webhook(f"{URL}/webhook")
+        # اجرای وبسرور داخلی
+        await app.start()
+        print(f"🚀 Webhook set at {URL}/webhook and bot is running...")
+        await app.updater.start_webhook(listen="0.0.0.0", port=PORT, url_path="/webhook", webhook_url=f"{URL}/webhook")
+        await app.updater.idle()
+
+    asyncio.run(main())
