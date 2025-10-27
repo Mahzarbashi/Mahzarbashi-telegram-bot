@@ -5,8 +5,11 @@ from telegram.ext import Application, MessageHandler, filters, CallbackQueryHand
 from gtts import gTTS
 import tempfile
 import asyncio
+import nest_asyncio
 
-# ⚙️ تنظیم توکن از محیط Render
+# ⚙️ حل مشکل asyncio loop در Flask
+nest_asyncio.apply()
+
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
     raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
@@ -52,7 +55,9 @@ application.add_handler(CallbackQueryHandler(button_handler))
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.create_task(application.update_queue.put(update))
+    # استفاده از loop موجود
+    loop = asyncio.get_event_loop()
+    loop.create_task(application.update_queue.put(update))
     return "OK"
 
 @app.route("/")
@@ -65,7 +70,9 @@ if __name__ == "__main__":
     hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
     if not hostname:
         raise ValueError("❌ RENDER_EXTERNAL_HOSTNAME پیدا نشد!")
+
     webhook_url = f"https://{hostname}/{TOKEN}"
     asyncio.run(bot.set_webhook(webhook_url))
     print(f"✅ Webhook set to: {webhook_url}")
+
     app.run(host="0.0.0.0", port=port)
