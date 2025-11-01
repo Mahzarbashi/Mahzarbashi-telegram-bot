@@ -19,6 +19,8 @@ WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
 bot = Bot(token=TOKEN)
 application = Application.builder().token(TOKEN).build()
 
+# حافظه موقت برای ذخیره‌ی پاسخ‌ها
+voice_cache = {}
 
 # پاسخ به پیام‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -44,8 +46,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "برای سایر موضوعات لطفاً به سایت محضرباشی مراجعه کنید 💼"
         )
 
+    # ذخیره‌ی پاسخ در حافظه با شناسه‌ی خاص
+    key = str(update.message.message_id)
+    voice_cache[key] = reply_text
+
     keyboard = [
-        [InlineKeyboardButton("🎧 گوش دادن به پاسخ صوتی", callback_data=f"voice:{reply_text}")]
+        [InlineKeyboardButton("🎧 گوش دادن به پاسخ صوتی", callback_data=f"voice:{key}")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(reply_text, reply_markup=reply_markup)
@@ -55,12 +61,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     if query.data.startswith("voice:"):
-        text = query.data.replace("voice:", "")
+        key = query.data.split(":")[1]
+        text = voice_cache.get(key)
+
+        if not text:
+            await query.edit_message_text("❌ متأسفم، متن موردنظر پیدا نشد.")
+            return
+
         tts = gTTS(text=text, lang='fa')
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
             tts.save(tmp_file.name)
             await bot.send_audio(chat_id=query.message.chat_id, audio=open(tmp_file.name, 'rb'), title="پاسخ صوتی 🎵")
+
         await query.edit_message_text("✅ فایل صوتی برات فرستادم 🎧")
 
 
@@ -92,4 +106,4 @@ async def telegram_webhook(request: Request):
 
 @app.get("/")
 async def home():
-    return {"message": "🤖 Mahzarbashi Assistant is running perfectly on Render!"}
+    return {"message": "🤖 Mahzarbashi Assistant bot is active and working perfectly!"}
