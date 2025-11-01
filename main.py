@@ -1,88 +1,43 @@
 import os
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters,
-)
-import nest_asyncio
-import asyncio
-from gtts import gTTS
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from flask import Flask, request
 
-# ---------------------- تنظیمات اولیه ----------------------
-TOKEN = os.getenv("BOT_TOKEN", "8249435097:AAEqSwTL8Ah8Kfyzo9Z_iQE97OVUViXtOmY")
-WEBHOOK_URL = f"https://mahzarbashi-telegram-bot-1-usa9.onrender.com/{TOKEN}"
+TOKEN = os.environ.get("BOT_TOKEN")
+app = Flask(__name__)
 
-app = FastAPI()
-nest_asyncio.apply()
-
-# ساخت آبجکت ربات
 application = Application.builder().token(TOKEN).build()
 
+# نمونه هندلر
+async def start(update, context):
+    await update.message.reply_text("سلام! من ربات محضرباشی‌ام 🤖")
 
-# ---------------------- هندلر پیام ----------------------
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+application.add_handler(CommandHandler("start", start))
 
-    if not text:
-        return
-
-    if "سلام" in text:
-        reply = "سلام! من ربات محضرباشی هستم 🌸 چطور می‌تونم کمکتون کنم؟"
-    elif "حقوق" in text or "طلاق" in text:
-        reply = "برای دریافت مشاوره حقوقی می‌تونید به سایت محضرباشی مراجعه کنید:\nhttps://mahzarbashi.ir"
-    else:
-        reply = "پرسشت رو واضح‌تر بگو تا راهنماییت کنم 🌷"
-
-    keyboard = [
-        [
-            InlineKeyboardButton("💬 سوالات حقوقی", callback_data="faq"),
-            InlineKeyboardButton("🌐 سایت محضرباشی", url="https://mahzarbashi.ir"),
-        ]
-    ]
-
-    await update.message.reply_text(reply, reply_markup=InlineKeyboardMarkup(keyboard))
-
-
-# ---------------------- هندلر دکمه‌ها ----------------------
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "faq":
-        await query.edit_message_text(
-            "سوالات متداول:\n\n1️⃣ نحوه دریافت مشاوره حقوقی\n2️⃣ هزینه تنظیم قرارداد\n3️⃣ ارتباط با وکیل"
+@app.route(f"/{TOKEN}", methods=["POST"])
+async def webhook():
+    update = await request.get_json()
+    if update:
+        await application.process_update(
+            telegram.Update.de_json(update, application.bot)
         )
+    return "OK"
 
+@app.route("/", methods=["GET"])
+def index():
+    return "Bot is running ✅"
 
-# ---------------------- FastAPI بخش ----------------------
-@app.post(f"/{TOKEN}")
-async def telegram_webhook(req: Request):
-    data = await req.json()
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return JSONResponse(content={"ok": True})
-
-
-@app.get("/")
-async def root():
-    return {"status": "Mahzarbashi Telegram Bot is running ✅"}
-
-
-# ---------------------- Startup Event ----------------------
-@app.on_event("startup")
-async def on_startup():
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    print(f"✅ Webhook set to: {WEBHOOK_URL}")
-
-
-# ---------------------- اجرای برنامه ----------------------
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    import asyncio
+    async def main():
+        await application.initialize()
+        await application.start()
+        await application.updater.start_webhook(
+            listen="0.0.0.0",
+            port=int(os.environ.get("PORT", 10000)),
+            url_path=TOKEN,
+            webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
+        )
+        print("Webhook set and bot started ✅")
+        await asyncio.Event().wait()  # keeps bot running
+
+    asyncio.run(main())
