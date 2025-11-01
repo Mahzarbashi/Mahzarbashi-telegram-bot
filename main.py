@@ -6,44 +6,44 @@ from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filt
 from gtts import gTTS
 import tempfile
 import nest_asyncio
+from contextlib import asynccontextmanager
 
 nest_asyncio.apply()
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
-    raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کنید.")
+    raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً متغیر TELEGRAM_TOKEN را در Render تنظیم کن.")
 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
 
-# ساخت Bot و Application
 bot = Bot(token=TOKEN)
 application = Application.builder().bot(bot).build()
 
-# پاسخ متنی و صوتی به سوالات حقوقی
+# پاسخ به پیام‌ها
 async def handle_message(update: Update, context: CallbackContext):
     text = update.message.text.strip().lower()
-    reply_text = ""
 
-    if any(word in text for word in ["قانون", "حقوق", "وکالت", "قرارداد", "مهریه", "طلاق"]):
+    if any(word in text for word in ["قانون", "حقوق", "وکالت", "طلاق", "مهریه", "قرارداد"]):
         reply_text = (
             f"👋 سلام {update.effective_user.first_name}!\n"
-            "این ربات توسط نسترن بنی طبا آماده شده و پاسخگوی سوالات حقوقی است.\n\n"
-            "سوال شما:\n"
-            f'{update.message.text}\n\n'
-            "پاسخ کوتاه: برای جزئیات بیشتر و مشاوره تخصصی، لطفاً به سایت محضرباشی مراجعه کنید."
+            "من دستیار هوشمند حقوقی محضرباشی هستم.\n"
+            "سؤال شما:\n"
+            f"{update.message.text}\n\n"
+            "📚 پاسخ: برای جزئیات بیشتر لطفاً به سایت محضرباشی مراجعه کنید.\n"
+            "🌐 mahzarbashi.ir"
         )
     else:
         reply_text = (
-            f"👋 سلام {update.effective_user.first_name}!\n"
-            "این ربات فقط پاسخگوی سوالات حقوقی است.\n"
-            "برای سایر موارد، لطفاً به سایت محضرباشی مراجعه کنید."
+            f"سلام {update.effective_user.first_name} 🌸\n"
+            "من فقط به پرسش‌های حقوقی پاسخ می‌دم.\n"
+            "برای سایر موضوعات لطفاً به سایت محضرباشی مراجعه کنید 💼"
         )
 
-    keyboard = [[InlineKeyboardButton("🎧 گوش دادن صوتی", callback_data=f"voice:{reply_text}")]]
+    keyboard = [[InlineKeyboardButton("🎧 گوش دادن به پاسخ صوتی", callback_data=f"voice:{reply_text}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(reply_text, reply_markup=reply_markup)
 
-# تولید پاسخ صوتی
+# پاسخ صوتی
 async def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
@@ -52,16 +52,14 @@ async def button_handler(update: Update, context: CallbackContext):
         tts = gTTS(text=text, lang='fa')
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
             tts.save(tmp_file.name)
-            await bot.send_audio(chat_id=query.message.chat_id, audio=open(tmp_file.name, 'rb'), title="پاسخ صوتی 🎧")
-        await query.edit_message_text("✅ فایل صوتی برات فرستادم 🎵")
+            await bot.send_audio(chat_id=query.message.chat_id, audio=open(tmp_file.name, 'rb'), title="پاسخ صوتی 🎵")
+        await query.edit_message_text("✅ فایل صوتی برات فرستادم 🎧")
 
-# اضافه کردن Handler ها
+# هندلرها
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 application.add_handler(CallbackQueryHandler(button_handler))
 
-# FastAPI و Lifespan
-from contextlib import asynccontextmanager
-
+# FastAPI
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await application.initialize()
@@ -83,4 +81,4 @@ async def telegram_webhook(request: Request):
 
 @app.get("/")
 async def home():
-    return "🤖 Mahzarbashi Bot is running and happy! 💫"
+    return {"message": "🤖 Mahzarbashi Telegram Bot is alive and working perfectly!"}
