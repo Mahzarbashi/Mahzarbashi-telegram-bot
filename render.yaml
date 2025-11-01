@@ -2,9 +2,8 @@ services:
   - type: web
     name: mahzarbashi-bot
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app
-    plan: free
+    buildCommand: ""
+    startCommand: "gunicorn -k uvicorn.workers.UvicornWorker main:app"
     envVars:
-      - key: TELEGRAM_TOKEN
-        value: 8249435097:AAGOIS7GfwBayCTSZGFahbMhYcZDFxzSGAg
+      - key: BOT_TOKEN
+        value: 8310741380:AAHRrADEytsjTVZYtJle71e5twxFxqr556c
