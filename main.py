@@ -82,3 +82,9 @@ async def telegram_webhook(request: Request):
 @app.get("/")
 async def home():
     return {"message": "🤖 Mahzarbashi Telegram Bot is alive and working perfectly!"}
+
+# اجرای سرور FastAPI روی Render
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
