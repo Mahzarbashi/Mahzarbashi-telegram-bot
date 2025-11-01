@@ -6,20 +6,20 @@ from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filt
 from gtts import gTTS
 import tempfile
 import nest_asyncio
+import uvicorn
 
 nest_asyncio.apply()
 
-# --- تنظیمات ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
-    raise ValueError("❌ توکن پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کن.")
+    raise ValueError("❌ توکن تلگرام پیدا نشد! لطفاً TELEGRAM_TOKEN را در Render تنظیم کن.")
 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
 
 bot = Bot(token=TOKEN)
 application = Application.builder().token(TOKEN).build()
 
-# --- پاسخ به پیام‌ها ---
+# ---- پاسخ به پیام‌ها ----
 async def handle_message(update: Update, context):
     text = update.message.text.lower().strip()
 
@@ -40,7 +40,7 @@ async def handle_message(update: Update, context):
     keyboard = [[InlineKeyboardButton("🎧 پاسخ صوتی", callback_data=f"voice:{reply}")]]
     await update.message.reply_text(reply, reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- پاسخ صوتی ---
+# ---- پاسخ صوتی ----
 async def button_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -52,11 +52,11 @@ async def button_handler(update: Update, context):
             await bot.send_audio(chat_id=query.message.chat.id, audio=open(tmp_file.name, 'rb'))
         await query.edit_message_text("✅ فایل صوتی برات فرستادم 🎧")
 
-# --- هندلرها ---
+# ---- هندلرها ----
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 application.add_handler(CallbackQueryHandler(button_handler))
 
-# --- FastAPI ---
+# ---- FastAPI ----
 app = FastAPI()
 
 @app.on_event("startup")
@@ -75,3 +75,8 @@ async def webhook(request: Request):
 @app.get("/")
 async def home():
     return {"message": "🤖 Mahzarbashi Assistant Bot is running successfully!"}
+
+# ---- اجرای Uvicorn در Render ----
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
