@@ -7,7 +7,6 @@ from gtts import gTTS
 
 # --- دریافت توکن از متغیر محیطی ---
 TOKEN = os.environ.get("BOT_TOKEN")
-
 if not TOKEN:
     raise ValueError("❌ BOT_TOKEN در محیط تعریف نشده! لطفاً در Render مقدارش را تنظیم کن.")
 
@@ -19,7 +18,9 @@ app = FastAPI()
 
 # --- دستور /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام 👋 من ربات محضرباشی‌ام!\nسؤالت رو بنویس تا راهنماییت کنم.")
+    await update.message.reply_text(
+        "سلام 👋 من ربات محضرباشی‌ام!\nسؤالت رو بنویس تا راهنماییت کنم."
+    )
 
 # --- پاسخ خودکار به پیام‌های متنی ---
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
