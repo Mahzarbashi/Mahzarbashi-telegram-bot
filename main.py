@@ -1,43 +1,63 @@
 import os
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from flask import Flask, request
+import asyncio
+from fastapi import FastAPI, Request
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from gtts import gTTS
 
 TOKEN = os.environ.get("BOT_TOKEN")
-app = Flask(__name__)
 
+# ایجاد اپلیکیشن تلگرام
 application = Application.builder().token(TOKEN).build()
 
-# نمونه هندلر
-async def start(update, context):
-    await update.message.reply_text("سلام! من ربات محضرباشی‌ام 🤖")
+# ایجاد اپلیکیشن FastAPI
+app = FastAPI()
 
+# فرمان /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام 👋 من ربات محضرباشی‌ام!\nسؤالت رو بنویس تا راهنماییت کنم.")
+
+# پاسخ به پیام‌های متنی
+async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    response_text = f"پاسخ خودکار: درباره‌ی «{text}» به‌زودی توضیح داده می‌شود."
+
+    # پاسخ متنی
+    await update.message.reply_text(response_text)
+
+    # پاسخ صوتی با gTTS
+    tts = gTTS(response_text, lang="fa")
+    tts.save("reply.mp3")
+    await update.message.reply_voice(voice=open("reply.mp3", "rb"))
+
+# افزودن هندلرها
 application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-@app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook():
-    update = await request.get_json()
-    if update:
-        await application.process_update(
-            telegram.Update.de_json(update, application.bot)
-        )
-    return "OK"
+# مسیر webhook
+@app.post(f"/{TOKEN}")
+async def webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return {"ok": True}
 
-@app.route("/", methods=["GET"])
-def index():
-    return "Bot is running ✅"
+# مسیر تست (صفحه‌ی اصلی)
+@app.get("/")
+def home():
+    return {"status": "Bot is running ✅"}
+
+# اجرای ربات با Webhook
+async def main():
+    await application.initialize()
+    await application.start()
+    await application.bot.set_webhook(
+        url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
+    )
+    print("Webhook set and bot started ✅")
+
+    # منتظر ماندن برای همیشه
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    import asyncio
-    async def main():
-        await application.initialize()
-        await application.start()
-        await application.updater.start_webhook(
-            listen="0.0.0.0",
-            port=int(os.environ.get("PORT", 10000)),
-            url_path=TOKEN,
-            webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
-        )
-        print("Webhook set and bot started ✅")
-        await asyncio.Event().wait()  # keeps bot running
-
     asyncio.run(main())
