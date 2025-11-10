@@ -8,14 +8,14 @@ from flask import Flask, request
 # ==============================
 # تنظیمات کلیدها
 # ==============================
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")  # مثال: 8249435097:AAEqSw...
-APP_URL = os.environ.get("APP_URL")  # مثال: https://mahzarbashi-telegram-bot-v2-1.onrender.com
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")  # مثال: sk-...
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+APP_URL = os.environ.get("APP_URL")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 openai.api_key = OPENAI_API_KEY
 
 # ==============================
-# فعال کردن لاگ برای دیباگ
+# فعال کردن لاگ
 # ==============================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -29,7 +29,7 @@ app = Flask(__name__)
 bot = Bot(token=TELEGRAM_TOKEN)
 
 # ==============================
-# پیام خوش‌آمدگویی /start
+# پیام خوش‌آمدگویی
 # ==============================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
@@ -45,19 +45,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text)
 
 # ==============================
-# پردازش پیام کاربران
+# پاسخ به پیام کاربران
 # ==============================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_question = update.message.text
 
-    # بررسی پیچیدگی سوال (معیار ساده)
+    # اگر پیام طولانی و پیچیده بود
     if len(user_question.split()) > 40:
         await update.message.reply_text(
             "این موضوع کمی پیچیده است. لطفاً برای مشاوره دقیق‌تر به وکلای محضرباشی مراجعه کنید."
         )
         return
 
-    # تولید پاسخ با GPT
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -93,7 +92,8 @@ def webhook():
 # اجرای Webhook روی Render
 # ==============================
 if __name__ == "__main__":
-    # تنظیم Webhook روی Render
+    # ست کردن Webhook
     bot.set_webhook(f"{APP_URL}/{TELEGRAM_TOKEN}")
     print("Bot is running with Webhook...")
+    # Render پورت را از متغیر محیطی می‌دهد
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
