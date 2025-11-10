@@ -6,7 +6,7 @@ import openai
 from flask import Flask, request
 
 # ==============================
-# تنظیمات کلیدها
+# تنظیم کلیدها
 # ==============================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 APP_URL = os.environ.get("APP_URL")
@@ -92,8 +92,6 @@ def webhook():
 # اجرای Webhook روی Render
 # ==============================
 if __name__ == "__main__":
-    # ست کردن Webhook
     bot.set_webhook(f"{APP_URL}/{TELEGRAM_TOKEN}")
     print("Bot is running with Webhook...")
-    # Render پورت را از متغیر محیطی می‌دهد
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
