@@ -1,5 +1,5 @@
-import logging
 import os
+import logging
 from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 import openai
@@ -19,15 +19,19 @@ logging.basicConfig(
 
 # Flask app برای Webhook
 app = Flask(__name__)
-
 bot = Bot(token=TELEGRAM_TOKEN)
 
 # پیام خوش‌آمدگویی
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "سلام! من دستیار حقوقی محضرباشی هستم.\n"
+        "سلام! 👋\n"
+        "من دستیار حقوقی محضرباشی هستم.\n"
         "این ربات توسط نسترن بنی طبا ساخته شده و می‌تونه به سوالات حقوقی شما پاسخ بده.\n\n"
-        "لطفاً سوال حقوقی خود را بپرسید."
+        "📌 راهنمای استفاده:\n"
+        "1️⃣ سوال حقوقی خود را تایپ کنید.\n"
+        "2️⃣ اگر سوال ساده باشد، پاسخ کامل دریافت می‌کنید.\n"
+        "3️⃣ اگر موضوع پیچیده باشد، برای مشاوره دقیق‌تر به وکلای محضرباشی ارجاع داده می‌شوید.\n\n"
+        "برای شروع، لطفاً سوال خود را وارد کنید."
     )
     await update.message.reply_text(welcome_text)
 
@@ -35,7 +39,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_question = update.message.text
 
-    # بررسی پیچیدگی
+    # بررسی پیچیدگی سوال
     if len(user_question.split()) > 40:
         await update.message.reply_text(
             "این موضوع کمی پیچیده است. لطفاً برای مشاوره دقیق‌تر به وکلای محضرباشی مراجعه کنید."
@@ -57,7 +61,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("متاسفانه مشکلی پیش آمد، دوباره تلاش کنید.")
         logging.error(e)
 
-# ایجاد اپلیکیشن تلگرام با Webhook
+# ایجاد اپلیکیشن تلگرام
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -66,11 +70,11 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_m
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    application.run_update(update)
+    application.create_task(application.update_queue.put(update))
     return "OK"
 
 if __name__ == "__main__":
-    # تنظیم Webhook
+    # تنظیم Webhook روی Render
     bot.set_webhook(f"{APP_URL}/{TELEGRAM_TOKEN}")
     print("Bot is running with Webhook...")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
