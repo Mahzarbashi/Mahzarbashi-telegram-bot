@@ -1,67 +1,76 @@
+import logging
 import os
-import asyncio
-from fastapi import FastAPI, Request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from gtts import gTTS
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import openai
+from flask import Flask, request
 
-# --- دریافت توکن از متغیر محیطی ---
-TOKEN = os.environ.get("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN در محیط تعریف نشده! لطفاً در Render مقدارش را تنظیم کن.")
+# تنظیمات کلیدها
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+APP_URL = os.environ.get("APP_URL")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# --- ایجاد اپلیکیشن تلگرام ---
-application = Application.builder().token(TOKEN).build()
+openai.api_key = OPENAI_API_KEY
 
-# --- ایجاد اپلیکیشن FastAPI ---
-app = FastAPI()
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-# --- دستور /start ---
+# Flask app برای Webhook
+app = Flask(__name__)
+
+bot = Bot(token=TELEGRAM_TOKEN)
+
+# پیام خوش‌آمدگویی
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "سلام 👋 من ربات محضرباشی‌ام!\nسؤالت رو بنویس تا راهنماییت کنم."
+    welcome_text = (
+        "سلام! من دستیار حقوقی محضرباشی هستم.\n"
+        "این ربات توسط نسترن بنی طبا ساخته شده و می‌تونه به سوالات حقوقی شما پاسخ بده.\n\n"
+        "لطفاً سوال حقوقی خود را بپرسید."
     )
+    await update.message.reply_text(welcome_text)
 
-# --- پاسخ خودکار به پیام‌های متنی ---
-async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    response_text = f"پاسخ خودکار: درباره‌ی «{text}» به‌زودی توضیح داده می‌شود."
+# پاسخ به سوالات کاربران
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_question = update.message.text
 
-    # پاسخ متنی
-    await update.message.reply_text(response_text)
+    # بررسی پیچیدگی
+    if len(user_question.split()) > 40:
+        await update.message.reply_text(
+            "این موضوع کمی پیچیده است. لطفاً برای مشاوره دقیق‌تر به وکلای محضرباشی مراجعه کنید."
+        )
+        return
 
-    # پاسخ صوتی (gTTS)
-    tts = gTTS(response_text, lang="fa")
-    tts.save("reply.mp3")
-    await update.message.reply_voice(voice=open("reply.mp3", "rb"))
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "تو یک دستیار حقوقی حرفه‌ای هستی. پاسخ‌ها دقیق، قابل فهم و کامل بده."},
+                {"role": "user", "content": user_question}
+            ],
+            max_tokens=600
+        )
+        answer = response.choices[0].message.content
+        await update.message.reply_text(answer)
+    except Exception as e:
+        await update.message.reply_text("متاسفانه مشکلی پیش آمد، دوباره تلاش کنید.")
+        logging.error(e)
 
-# --- افزودن هندلرها ---
+# ایجاد اپلیکیشن تلگرام با Webhook
+application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# --- مسیر webhook ---
-@app.post(f"/{TOKEN}")
-async def webhook(request: Request):
-    data = await request.json()
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return {"ok": True}
-
-# --- مسیر تست (صفحه اصلی) ---
-@app.get("/")
-def home():
-    return {"status": "Bot is running ✅"}
-
-# --- اجرای ربات با Webhook ---
-async def main():
-    await application.initialize()
-    await application.start()
-    await application.bot.set_webhook(
-        url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
-    )
-    print("Webhook set and bot started ✅")
-
-    await asyncio.Event().wait()  # تا برنامه همیشه روشن بماند
+# Webhook با Flask
+@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    application.run_update(update)
+    return "OK"
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # تنظیم Webhook
+    bot.set_webhook(f"{APP_URL}/{TELEGRAM_TOKEN}")
+    print("Bot is running with Webhook...")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
